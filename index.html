@@ -332,7 +332,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790417743";
+const BUILD_ID = "1790418092";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -879,9 +879,12 @@ async function saveEntry(ev){
     if(res.status === 401){ fx('entryError').textContent = 'Session expired — sign out and sign in again.'; return; }
     if(res.status === 404){ fx('entryError').textContent = 'Saving isn\'t set up on the proxy yet.'; return; }
     if(!res.ok){
-      let msg = 'Save failed (' + res.status + ')';
-      try{ const j = await res.json(); if(j.error) msg += ': ' + j.error; } catch(e){}
-      fx('entryError').textContent = msg;
+      let err = '';
+      try{ const t = await res.text(); try{ err = JSON.parse(t).error || t; } catch(e){ err = t; } } catch(e){}
+      // A proxy without the write route hands the POST to its read handler, which wants ?sheetId= in the URL.
+      fx('entryError').textContent = /missing sheetid/i.test(err)
+        ? 'Saving isn\'t set up on the proxy yet.'
+        : 'Save failed (' + res.status + ')' + (err ? ': ' + String(err).slice(0, 120) : '');
       return;
     }
     closeEntry();
