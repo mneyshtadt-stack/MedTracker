@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedTracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1b2a">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MedTracker">
+<style>
+  :root{
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a;
+    --band:rgba(12,163,12,0.08);
+    --good-text:#006300; --bad-text:#b42323; --critical:#d03b3b;
+    --empty:#efeee9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+      --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+      --band:rgba(12,163,12,0.14);
+      --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
+      --empty:#262624;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+    --band:rgba(12,163,12,0.14);
+    --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
+    --empty:#262624;
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--page); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:15px; line-height:1.45;}
+  a{color:var(--series-1);}
+  .wrap{display:none; max-width:1040px; margin:0 auto; padding:16px;}
+  body.mt-unlocked .wrap{display:block;}
+  body.mt-unlocked #lockScreen{display:none;}
+
+  #lockScreen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;}
+  #lockCard{background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:28px 24px; max-width:360px; width:100%; text-align:center;}
+  #lockCard h2{margin:12px 0 4px; font-size:22px;}
+  #lockCard p{margin:0 0 18px; color:var(--ink-2); font-size:14px;}
+  #googleSignInBtn{display:flex; justify-content:center; min-height:44px;}
+  #lockError{color:var(--bad-text); font-size:13px; margin-top:10px; min-height:1em;}
+
+  header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
+  h1{margin:0; font-size:24px; display:flex; align-items:center; gap:10px;}
+  #accountLine{font-size:13px; color:var(--ink-2); margin-top:6px;}
+  .hdr-right{text-align:right; font-size:12px; color:var(--muted);}
+  #refreshBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink);}
+  #status{margin-top:6px; min-height:1em;}
+  #status.err{color:var(--bad-text);}
+
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px;}
+  .tile{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px;}
+  .tile .lbl{font-size:12px; color:var(--ink-2);}
+  .tile .val{font-size:26px; font-weight:600; margin:2px 0;}
+  .tile .val small{font-size:14px; font-weight:400; color:var(--ink-2);}
+  .tile .sub{font-size:12px; color:var(--muted);}
+  .up{color:var(--bad-text);} .down{color:var(--good-text);}
+
+  section.card{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; margin-bottom:16px;}
+  section.card h2{font-size:16px; margin:0 0 2px;}
+  .card-sub{font-size:12px; color:var(--muted); margin-bottom:8px;}
+  .card-head{display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;}
+  .ranges{display:flex; gap:4px;}
+  .ranges button{font:inherit; font-size:12px; padding:4px 10px; border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); background:transparent; color:var(--ink-2);}
+  .ranges button.on{background:var(--ink); color:var(--surface); border-color:var(--ink);}
+  .chart{width:100%; position:relative;}
+  .chart svg{display:block; width:100%; overflow:visible;}
+  .chart-title{font-size:13px; color:var(--ink-2); margin:12px 0 0;}
+  .empty-note{color:var(--muted); font-size:13px; padding:20px 0; text-align:center;}
+
+  .tick text{fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums;}
+  .gridline{stroke:var(--grid); stroke-width:1;}
+  .baseline{stroke:var(--axis); stroke-width:1;}
+
+  #tip{position:absolute; pointer-events:none; background:var(--surface); color:var(--ink);
+    border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.12); display:none; z-index:10; white-space:nowrap;}
+  #tip b{font-weight:600;}
+
+  .adh-month{margin-top:12px;}
+  .adh-month h3{font-size:13px; margin:0 0 4px; font-weight:600;}
+  .adh-month h3 span{font-weight:400; color:var(--ink-2);}
+  .adh-grid{display:grid; gap:2px; align-items:center;}
+  .adh-grid .med{font-size:12px; color:var(--ink-2); white-space:nowrap; padding-right:6px;}
+  .adh-grid .dn{font-size:9px; color:var(--muted); text-align:center; font-variant-numeric:tabular-nums;}
+  .cell{aspect-ratio:1; border-radius:3px; background:var(--empty); max-height:18px;}
+  .cell.taken{background:var(--series-1);}
+  .cell.missed{background:transparent; box-shadow:inset 0 0 0 1.5px var(--critical);}
+  .cell.planned{background:transparent; box-shadow:inset 0 0 0 1px var(--muted);}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); margin-top:10px;}
+  .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px;}
+
+  table{border-collapse:collapse; width:100%; font-size:13px;}
+  th,td{padding:6px 8px; text-align:right; border-bottom:1px solid var(--grid); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;}
+  th{font-weight:600; color:var(--ink-2); font-size:12px;}
+  .scroll-x{overflow-x:auto;}
+  details{margin-top:10px; font-size:13px;}
+  summary{cursor:pointer; color:var(--ink-2);}
+
+  #addBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer; margin-right:6px;
+    border:1px solid var(--series-1); background:var(--series-1); color:#fff;}
+  #entryModal{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
+  #entryModal.open{display:flex;}
+  #entryCard{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; width:100%; max-width:380px;}
+  #entryCard h3{margin:0 0 4px; font-size:17px;}
+  #entryHint{font-size:12px; color:var(--muted); margin-bottom:12px; min-height:1em;}
+  .f-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .f-row label{font-size:14px;}
+  .f-row input[type=date], .f-row input[type=number]{font:inherit; width:150px; padding:7px 9px; border-radius:8px;
+    border:1px solid var(--axis); background:var(--page); color:var(--ink);}
+  .f-row input[type=checkbox]{width:22px; height:22px; accent-color:var(--series-1);}
+  .f-checks{display:flex; gap:16px; margin:4px 0 14px; flex-wrap:wrap;}
+  .f-checks label{display:flex; align-items:center; gap:6px; font-size:14px;}
+  .f-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:6px;}
+  .f-actions button{font:inherit; font-size:14px; padding:8px 16px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--border); background:transparent; color:var(--ink);}
+  .f-actions button.primary{background:var(--series-1); border-color:var(--series-1); color:#fff;}
+  .f-actions button:disabled{opacity:0.5; cursor:default;}
+  #entryError{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
+</style>
+</head>
+<body>
+<script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
+<div id="lockScreen">
+  <div id="lockCard">
+    <svg viewBox="0 0 192 192" width="56" height="56" aria-hidden="true">
+      <rect width="192" height="192" rx="36" fill="#0d1b2a"></rect>
+      <path d="M96 30 C 96 30 48 88 48 118 A 48 48 0 0 0 144 118 C 144 88 96 30 96 30 Z" fill="#2dd4bf"></path>
+      <polyline points="58,122 80,122 90,100 102,142 112,112 134,122" fill="none" stroke="#0d1b2a" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>
+    </svg>
+    <h2>MedTracker</h2>
+    <p>Sign in with your Google account to continue.</p>
+    <div id="googleSignInBtn"></div>
+    <div id="lockError"></div>
+  </div>
+</div>
+
+<script>
+  const GOOGLE_WEB_CLIENT_ID = '179631696884-t1r997qilgcbs5c9feddokdofu74avnp.apps.googleusercontent.com';
+  const ALLOWED_GOOGLE_EMAIL = 'mneyshtadt@gmail.com';
+  // Its own key rather than SheetPulse's pf_idToken: both apps live on the same github.io origin,
+  // so a shared key would mean signing out of one silently signs you out of the other.
+  const TOKEN_KEY = 'mt_idToken';
+
+  function mtDecodeJwt(token){
+    const payload = token.split('.')[1];
+    return JSON.parse(decodeURIComponent(escape(atob(payload.replace(/-/g,'+').replace(/_/g,'/')))));
+  }
+
+  // The real access gate is server-side: the proxy independently verifies this same ID token's
+  // signature and email on every request. This check only decides whether to show the UI.
+  function mtSetAccountLine(payload){
+    const el = document.getElementById('accountLine');
+    if(!el) return;
+    const avatar = payload.picture
+      ? `<img src="${payload.picture}" alt="" referrerpolicy="no-referrer" onerror="this.remove()" style="width:22px; height:22px; border-radius:50%; vertical-align:-6px; margin-right:8px;">`
+      : '';
+    el.innerHTML = `${avatar}<a href="#" id="mtSignOutLink">Sign out</a>`;
+    document.getElementById('mtSignOutLink').addEventListener('click', function(e){ e.preventDefault(); mtSignOut(); });
+  }
+
+  function mtSignOut(){
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('mt_snapshot');   // the saved copy of the sheet goes too -- it's health data
+    document.body.classList.remove('mt-unlocked');
+    if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+    location.reload();
+  }
+
+  function mtHandleGoogleCredential(response){
+    const idToken = response.credential;
+    let payload;
+    try{ payload = mtDecodeJwt(idToken); } catch(e){ payload = null; }
+    const errEl = document.getElementById('lockError');
+    if(!payload || payload.email !== ALLOWED_GOOGLE_EMAIL || !payload.email_verified){
+      errEl.textContent = 'This Google account is not authorized.';
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, idToken);
+    errEl.textContent = '';
+    document.body.classList.add('mt-unlocked');
+    mtSetAccountLine(payload);
+    refresh();
+  }
+
+  // A still-valid token from an earlier visit skips straight to unlocked; a Google ID token
+  // expires after ~1 hour, and the proxy rejects it independently once it does.
+  (function mtRestoreSession(){
+    const existing = localStorage.getItem(TOKEN_KEY);
+    if(!existing) return;
+    try{
+      const payload = mtDecodeJwt(existing);
+      if(payload.email === ALLOWED_GOOGLE_EMAIL && payload.exp > Date.now()/1000){
+        document.body.classList.add('mt-unlocked');
+        document.addEventListener('DOMContentLoaded', function(){ mtSetAccountLine(payload); });
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    } catch(e){ localStorage.removeItem(TOKEN_KEY); }
+  })();
+
+  window.addEventListener('load', function(){
+    if(window.google && google.accounts && google.accounts.id){
+      google.accounts.id.initialize({ client_id: GOOGLE_WEB_CLIENT_ID, callback: mtHandleGoogleCredential });
+      google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), {theme:'outline', size:'large', text:'signin_with'});
+    }
+  });
+</script>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>
+        <svg viewBox="0 0 192 192" width="1.2em" height="1.2em" aria-hidden="true">
+          <rect width="192" height="192" rx="36" fill="#0d1b2a"></rect>
+          <path d="M96 30 C 96 30 48 88 48 118 A 48 48 0 0 0 144 118 C 144 88 96 30 96 30 Z" fill="#2dd4bf"></path>
+          <polyline points="58,122 80,122 90,100 102,142 112,112 134,122" fill="none" stroke="#0d1b2a" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        </svg>
+        MedTracker
+      </h1>
+      <div id="accountLine"></div>
+    </div>
+    <div class="hdr-right">
+      <button id="addBtn" type="button">+ Add entry</button><button id="refreshBtn" type="button">Refresh</button>
+      <div id="status"></div>
+      <div id="buildLine"></div>
+    </div>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Fasting sugar</h2>
+        <div class="card-sub">mg/dL · shaded band is the normal fasting range (70–100)</div>
+      </div>
+      <div class="ranges" id="fastingRanges">
+        <button type="button" data-r="1M">1M</button>
+        <button type="button" data-r="3M">3M</button>
+        <button type="button" data-r="YTD">YTD</button>
+        <button type="button" data-r="MAX">MAX</button>
+      </div>
+    </div>
+    <div class="chart" id="fastingChart"></div>
+    <details>
+      <summary>Show data table</summary>
+      <div class="scroll-x" id="dailyTable"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Ozempic dose</h2>
+    <div class="card-sub">mg per weekly injection · dashed and hollow = planned</div>
+    <div class="chart" id="ozempicChart"></div>
+  </section>
+
+  <section class="card">
+    <h2>Daily medication</h2>
+    <div class="card-sub">% taken counts only days with an entry</div>
+    <div id="adherence"></div>
+    <div class="legend">
+      <span><i style="background:var(--series-1)"></i>Taken</span>
+      <span><i style="box-shadow:inset 0 0 0 1.5px var(--critical)"></i>Not taken</span>
+      <span><i style="background:var(--empty)"></i>No entry</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Lab results</h2>
+    <div class="card-sub">Change is from the first result to the latest</div>
+    <div class="scroll-x" id="labs"></div>
+  </section>
+</div>
+<div id="tip"></div>
+
+<div id="entryModal" role="dialog" aria-modal="true" aria-labelledby="entryTitle">
+  <form id="entryCard" autocomplete="off">
+    <h3 id="entryTitle">Add entry</h3>
+    <div id="entryHint"></div>
+    <div class="f-row"><label for="fDate">Date</label><input type="date" id="fDate" required></div>
+    <div class="f-checks">
+      <label><input type="checkbox" id="fXigduo"> Xigduo</label>
+      <label><input type="checkbox" id="fVitd"> Vit D</label>
+      <label><input type="checkbox" id="fStator"> Stator</label>
+    </div>
+    <div class="f-row"><label for="fOzempic">Ozempic (mg)</label><input type="number" id="fOzempic" step="0.05" min="0" inputmode="decimal"></div>
+    <div class="f-row"><label for="fFasting">Fasting Sugar</label><input type="number" id="fFasting" step="1" min="0" inputmode="numeric"></div>
+    <div id="entryError"></div>
+    <div class="f-actions">
+      <button type="button" id="entryCancel">Cancel</button>
+      <button type="submit" class="primary" id="entrySave">Save</button>
+    </div>
+  </form>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+const BUILD_ID = "1790416613";
+const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
+const PROXY_BASE_URL = "https://api.sheetpulse.org";
+const SNAPSHOT_KEY = 'mt_snapshot';
+// The sheet is the only store: edits made directly in Google Sheets show up on the next refresh
+// (this timer, returning to the app, the Refresh button, or right after a save).
+const REFRESH_MS = 5 * 60 * 1000;
+const FASTING_NORMAL = [70, 100];
+
+const MEDS = [
+  {key:'xigduo', label:'Xigduo'},
+  {key:'vitd',   label:'Vit D'},
+  {key:'stator', label:'Stator'},
+];
+const LABS = [
+  {key:'glucoseB', label:'Glucose (B)', unit:'mg/dL'},
+  {key:'hba1c',    label:'HbA1c',       unit:'%'},
+  {key:'alt',      label:'ALT (GPT)',   unit:'U/L'},
+  {key:'ast',      label:'AST (GOT)',   unit:'U/L'},
+];
+// Sheet header text -> field. Matched case-insensitively, so a renamed unit in brackets still maps.
+const HEADER_MAP = [
+  [/^date/i, 'date'], [/^xigduo/i, 'xigduo'], [/^vit\s*d/i, 'vitd'], [/^stator/i, 'stator'],
+  [/^ozempic/i, 'ozempic'], [/^fasting/i, 'fasting'], [/^tregludec/i, 'tregludec'],
+  [/^glucose/i, 'glucoseB'], [/^hba1c/i, 'hba1c'], [/^alt/i, 'alt'], [/^ast/i, 'ast'],
+];
+const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+let state = {rows: [], baseline: null, range: '3M'};
+
+// ---------- data access ----------
+function proxyUrl(sheetName){
+  return `${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(SHEET_ID)}&sheetName=${encodeURIComponent(sheetName)}`;
+}
+function proxyListUrl(){
+  return `${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(SHEET_ID)}&action=list`;
+}
+function fetchViaProxy(url){
+  const idToken = localStorage.getItem(TOKEN_KEY) || '';
+  return fetch(url, {cache:'no-store', headers:{Authorization:`Bearer ${idToken}`}}).then(res => {
+    if(res.status === 401){
+      localStorage.removeItem(TOKEN_KEY);
+      document.body.classList.remove('mt-unlocked');
+      throw new Error('Session expired — sign in again');
+    }
+    if(!res.ok) throw new Error('Proxy returned ' + res.status);
+    return res;
+  });
+}
+
+// One tab per year (2026, 2027, ...), found automatically so a new year needs no code change.
+async function loadAllTabs(){
+  let years;
+  try{
+    const list = await (await fetchViaProxy(proxyListUrl())).json();
+    years = (list.tabs || []).map(t => t.title).filter(t => /^\d{4}$/.test(t)).sort();
+  } catch(e){
+    if(!localStorage.getItem(TOKEN_KEY)) throw e;
+    years = [];
+  }
+  if(!years.length) years = [String(new Date().getFullYear())];
+  const tabs = {};
+  for(const y of years){
+    tabs[y] = await (await fetchViaProxy(proxyUrl(y))).text();
+  }
+  return tabs;
+}
+
+// ---------- parsing ----------
+function toBool(s){
+  s = String(s || '').trim().toUpperCase();
+  return s === 'TRUE' ? true : s === 'FALSE' ? false : null;
+}
+function toNum(s){
+  s = String(s == null ? '' : s).replace(/,/g,'').trim();
+  if(s === '') return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+// Rows are dd/mm with no year: the year comes from the "🗓 October 2026" month row above them,
+// falling back to the tab's own name.
+function parseTab(csv, tabYear){
+  const grid = Papa.parse(csv.trim(), {skipEmptyLines:false}).data;
+  let cols = null, headerYear = +tabYear;
+  const rows = [], undatedLabs = [];
+  for(const r of grid){
+    const first = String(r[0] || '').trim();
+    if(!cols){
+      if(/^date/i.test(first)){
+        cols = {};
+        r.forEach((h, i) => {
+          const hit = HEADER_MAP.find(([re]) => re.test(String(h).trim()));
+          if(hit && !(hit[1] in cols)) cols[hit[1]] = i;
+        });
+      }
+      continue;
+    }
+    const monthHit = first.match(/([A-Za-z]+)\s+(\d{4})/);
+    if(monthHit && MONTHS.includes(monthHit[1].toLowerCase())){ headerYear = +monthHit[2]; continue; }
+
+    const get = k => (k in cols) ? r[cols[k]] : '';
+    const rec = {
+      xigduo: toBool(get('xigduo')), vitd: toBool(get('vitd')), stator: toBool(get('stator')),
+      ozempic: toNum(get('ozempic')), fasting: toNum(get('fasting')), tregludec: toNum(get('tregludec')),
+      glucoseB: toNum(get('glucoseB')), hba1c: toNum(get('hba1c')), alt: toNum(get('alt')), ast: toNum(get('ast')),
+    };
+    const dm = String(get('date')).trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    if(dm){
+      let yr = dm[3] ? +dm[3] : headerYear;
+      if(yr < 100) yr += 2000;
+      rec.date = new Date(yr, +dm[2] - 1, +dm[1]);
+      rows.push(rec);
+    } else if(LABS.some(l => rec[l.key] != null)){
+      undatedLabs.push(rec);
+    }
+  }
+  return {rows, undatedLabs};
+}
+
+function buildState(tabs){
+  let rows = [], undated = [];
+  Object.keys(tabs).sort().forEach(y => {
+    const p = parseTab(tabs[y], y);
+    rows = rows.concat(p.rows);
+    undated = undated.concat(p.undatedLabs);
+  });
+  rows.sort((a,b) => a.date - b.date);
+  const today = startOfDay(new Date());
+  rows.forEach(r => { r.planned = r.date > today; });
+  state.rows = rows;
+  // The dateless labs row at the bottom of the sheet is the pre-treatment baseline.
+  state.baseline = undated.length ? undated[undated.length - 1] : null;
+}
+
+// ---------- helpers ----------
+function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+const fmtDM = d3.timeFormat('%d/%m');
+const fmtDMY = d3.timeFormat('%d/%m/%Y');
+const fmtMonth = d3.timeFormat('%B %Y');
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtNum(v, dp){ return v == null ? '—' : String(parseFloat((+v).toFixed(dp == null ? (Number.isInteger(v) ? 0 : 1) : dp))); }
+function mean(a){ return a.length ? a.reduce((s,v) => s + v, 0) / a.length : null; }
+function past(){ return state.rows.filter(r => !r.planned); }
+function daysAgoText(d){
+  const n = Math.round((startOfDay(new Date()) - d) / 86400000);
+  return n === 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+}
+
+// ---------- tiles ----------
+function renderTiles(){
+  const p = past();
+  const today = startOfDay(new Date());
+  const withF = p.filter(r => r.fasting != null);
+  const last = withF[withF.length - 1];
+  const inRange = (from, to) => withF.filter(r => r.date >= from && r.date <= to).map(r => r.fasting);
+  const a7 = inRange(addDays(today,-6), today), prev7 = inRange(addDays(today,-13), addDays(today,-7));
+  const a30 = inRange(addDays(today,-29), today);
+  const m7 = mean(a7), mPrev = mean(prev7), m30 = mean(a30);
+
+  const oz = state.rows.filter(r => r.ozempic != null);
+  const ozNow = oz.filter(r => !r.planned).pop();
+  const ozNext = oz.find(r => r.planned);
+  const a1c = p.filter(r => r.hba1c != null).pop() || (state.baseline && state.baseline.hba1c != null ? state.baseline : null);
+
+  let delta7 = '';
+  if(m7 != null && mPrev != null){
+    const d = m7 - mPrev;
+    delta7 = ` · <span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(d),1)}</span> vs prior week`;
+  }
+  const tiles = [
+    {lbl:'Latest fasting sugar', val: last ? `${fmtNum(last.fasting)} <small>mg/dL</small>` : '—',
+     sub: last ? `${fmtDM(last.date)} · ${daysAgoText(last.date)}` : 'No readings yet'},
+    {lbl:'7-day average', val: m7 != null ? `${fmtNum(m7,0)} <small>mg/dL</small>` : '—',
+     sub: `${a7.length} reading${a7.length === 1 ? '' : 's'}${delta7}`},
+    {lbl:'30-day average', val: m30 != null ? `${fmtNum(m30,0)} <small>mg/dL</small>` : '—',
+     sub: `${a30.length} reading${a30.length === 1 ? '' : 's'}`},
+    {lbl:'Ozempic', val: ozNow ? `${fmtNum(ozNow.ozempic,2)} <small>mg</small>` : '—',
+     sub: ozNext ? `Next: ${fmtDM(ozNext.date)} · ${fmtNum(ozNext.ozempic,2)} mg` : (ozNow ? `Last: ${fmtDM(ozNow.date)}` : '')},
+    {lbl:'HbA1c', val: a1c ? `${fmtNum(a1c.hba1c,1)} <small>%</small>` : '—',
+     sub: a1c ? (a1c.date ? fmtDMY(a1c.date) : 'Baseline') : ''},
+  ];
+  document.getElementById('tiles').innerHTML = tiles.map(t =>
+    `<div class="tile"><div class="lbl">${t.lbl}</div><div class="val">${t.val}</div><div class="sub">${t.sub}</div></div>`).join('');
+}
+
+// ---------- charts ----------
+const tip = document.getElementById('tip');
+function showTip(html, ev){
+  tip.innerHTML = html;
+  tip.style.display = 'block';
+  const w = tip.offsetWidth;
+  let x = ev.pageX + 14;
+  if(x + w > window.scrollX + document.documentElement.clientWidth - 8) x = ev.pageX - w - 14;
+  tip.style.left = x + 'px';
+  tip.style.top = (ev.pageY - 40) + 'px';
+}
+function hideTip(){ tip.style.display = 'none'; }
+
+// One time-series chart: a single y-axis, 2px line, 8px markers, crosshair tooltip.
+function timeChart(el, cfg){
+  el.innerHTML = '';
+  const pts = cfg.points;
+  if(!pts.length){ el.innerHTML = `<div class="empty-note">${cfg.emptyText || 'No data in this range'}</div>`; return; }
+  const W = el.clientWidth || 320, H = cfg.height || 220;
+  const m = {t:14, r:14, b:24, l:34};
+  const x = d3.scaleTime().domain(cfg.domain).range([m.l, W - m.r]);
+  let lo = d3.min(pts, p => p.v), hi = d3.max(pts, p => p.v);
+  if(cfg.band){ lo = Math.min(lo, cfg.band[0]); hi = Math.max(hi, cfg.band[1]); }
+  const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.2);
+  const y = d3.scaleLinear().domain([cfg.zero ? 0 : lo - pad, hi + pad]).nice(4).range([H - m.b, m.t]);
+
+  const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+  const yt = svg.append('g').attr('class','tick');
+  y.ticks(4).forEach(t => {
+    yt.append('line').attr('class','gridline').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(t)).attr('y2', y(t));
+    yt.append('text').attr('x', m.l - 6).attr('y', y(t)).attr('dy','0.32em').attr('text-anchor','end').text(t);
+  });
+  svg.append('line').attr('class','baseline').attr('x1', m.l).attr('x2', W - m.r).attr('y1', H - m.b).attr('y2', H - m.b);
+  const xt = svg.append('g').attr('class','tick');
+  // d3 adds a month-start tick next to a day tick (e.g. 31/08 and 01/09); drop ticks that would collide.
+  let lastTx = -Infinity;
+  x.ticks(Math.max(2, Math.floor(W / 90))).forEach(t => {
+    if(x(t) - lastTx < 44) return;
+    lastTx = x(t);
+    xt.append('text').attr('x', x(t)).attr('y', H - m.b + 16).attr('text-anchor','middle').text(fmtDM(t));
+  });
+
+  if(cfg.band){
+    svg.append('rect').attr('x', m.l).attr('width', W - m.l - m.r)
+      .attr('y', y(cfg.band[1])).attr('height', y(cfg.band[0]) - y(cfg.band[1])).attr('fill','var(--band)');
+  }
+
+  const color = cfg.color || 'var(--series-1)';
+  const line = d3.line().x(p => x(p.d)).y(p => y(p.v)).curve(cfg.curve || d3.curveMonotoneX);
+  const solid = pts.filter(p => !p.planned);
+  const planned = pts.filter(p => p.planned);
+  if(solid.length > 1) svg.append('path').attr('d', line(solid)).attr('fill','none').attr('stroke', color).attr('stroke-width', 2);
+  if(planned.length){
+    const bridge = solid.length ? [solid[solid.length - 1]].concat(planned) : planned;
+    if(bridge.length > 1) svg.append('path').attr('d', line(bridge)).attr('fill','none').attr('stroke', color)
+      .attr('stroke-width', 2).attr('stroke-dasharray','4 4');
+  }
+  if(cfg.stepEnd && solid.length){
+    // A step line ends at its last point; carry the last dose forward to today so the current dose reads as ongoing.
+    const lastP = solid[solid.length - 1], end = planned.length ? null : Math.min(+cfg.domain[1], +startOfDay(new Date()));
+    if(end && end > +lastP.d) svg.append('line').attr('x1', x(lastP.d)).attr('x2', x(end))
+      .attr('y1', y(lastP.v)).attr('y2', y(lastP.v)).attr('stroke', color).attr('stroke-width', 2);
+  }
+
+  const showDots = cfg.dots !== false && pts.length <= 120;
+  if(showDots){
+    svg.append('g').selectAll('circle').data(pts).join('circle')
+      .attr('cx', p => x(p.d)).attr('cy', p => y(p.v)).attr('r', 4)
+      .attr('fill', p => p.planned ? 'var(--surface)' : color)
+      .attr('stroke', p => p.planned ? color : 'var(--surface)').attr('stroke-width', 2);
+  }
+  if(cfg.labelChanges){
+    let prev = null;
+    pts.forEach(p => {
+      if(p.v !== prev){
+        // Right of the step's first point, so the label stays clear of the y-axis numbers.
+        svg.append('text').attr('x', x(p.d) + 6).attr('y', y(p.v) - 9).attr('text-anchor','start')
+          .attr('font-size', 11).attr('fill','var(--ink-2)').text(cfg.fmt ? cfg.fmt(p.v) : p.v);
+      }
+      prev = p.v;
+    });
+  }
+
+  const hover = svg.append('g').style('display','none');
+  const vline = hover.append('line').attr('y1', m.t).attr('y2', H - m.b).attr('stroke','var(--axis)').attr('stroke-width',1);
+  const hdot = hover.append('circle').attr('r', 5).attr('fill', color).attr('stroke','var(--surface)').attr('stroke-width',2);
+  const bis = d3.bisector(p => p.d).center;
+  svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', W - m.l - m.r).attr('height', H - m.t - m.b)
+    .attr('fill','transparent').style('touch-action','pan-y')
+    .on('pointermove', function(ev){
+      const [mx] = d3.pointer(ev, svg.node());
+      const p = pts[bis(pts, x.invert(mx * (W / svg.node().getBoundingClientRect().width)))];
+      if(!p) return;
+      hover.style('display', null);
+      vline.attr('x1', x(p.d)).attr('x2', x(p.d));
+      hdot.attr('cx', x(p.d)).attr('cy', y(p.v));
+      showTip(cfg.tip(p), ev);
+    })
+    .on('pointerleave', function(){ hover.style('display','none'); hideTip(); });
+}
+
+function rangeStart(r){
+  const today = startOfDay(new Date());
+  if(r === '1M'){ const d = new Date(today); d.setMonth(d.getMonth() - 1); return d; }
+  if(r === '3M'){ const d = new Date(today); d.setMonth(d.getMonth() - 3); return d; }
+  if(r === 'YTD') return new Date(today.getFullYear(), 0, 1);
+  return null;
+}
+
+function renderDaily(){
+  const p = past();
+  const today = startOfDay(new Date());
+  const firstData = p.length ? p[0].date : today;
+  const rs = rangeStart(state.range);
+  const from = rs && rs > firstData ? rs : firstData;
+  const domain = [from, today > from ? today : addDays(from, 1)];
+  const inR = r => r.date >= from && r.date <= today;
+
+  const f = p.filter(r => r.fasting != null && inR(r)).map(r => ({d:r.date, v:r.fasting, r}));
+  timeChart(document.getElementById('fastingChart'), {
+    // Straight segments: a smoothed curve would invent a shape across days with no reading.
+    points: f, domain, band: FASTING_NORMAL, height: 230, curve: d3.curveLinear,
+    tip: q => `<b>${fmtDMY(q.d)}</b><br>Fasting sugar: <b>${fmtNum(q.v)}</b> mg/dL`,
+  });
+  document.querySelectorAll('#fastingRanges button').forEach(b => b.classList.toggle('on', b.dataset.r === state.range));
+
+  const rowsDesc = p.slice().reverse().filter(r => r.fasting != null || r.ozempic != null);
+  document.getElementById('dailyTable').innerHTML = `<table><thead><tr><th>Date</th><th>Fasting (mg/dL)</th><th>Ozempic (mg)</th></tr></thead><tbody>` +
+    rowsDesc.map(r => `<tr><td>${fmtDMY(r.date)}</td><td>${fmtNum(r.fasting)}</td><td>${r.ozempic == null ? '—' : fmtNum(r.ozempic,2)}</td></tr>`).join('') +
+    `</tbody></table>`;
+}
+
+function renderOzempic(){
+  const oz = state.rows.filter(r => r.ozempic != null).map(r => ({d:r.date, v:r.ozempic, planned:r.planned}));
+  const today = startOfDay(new Date());
+  const end = oz.length ? new Date(Math.max(+oz[oz.length - 1].d, +today)) : today;
+  timeChart(document.getElementById('ozempicChart'), {
+    points: oz, domain: [oz.length ? oz[0].d : addDays(today,-30), addDays(end, 3)],
+    height: 170, zero: true, curve: d3.curveStepAfter, stepEnd: true, labelChanges: true,
+    fmt: v => fmtNum(v,2), emptyText: 'No Ozempic doses recorded',
+    tip: q => `<b>${fmtDMY(q.d)}</b><br>Ozempic: <b>${fmtNum(q.v,2)}</b> mg${q.planned ? ' · planned' : ''}`,
+  });
+}
+
+// ---------- adherence ----------
+function renderAdherence(){
+  const p = past().filter(r => MEDS.some(m => r[m.key] != null));
+  const byMonth = d3.groups(p, r => r.date.getFullYear() * 12 + r.date.getMonth()).sort((a,b) => b[0] - a[0]);
+  if(!byMonth.length){ document.getElementById('adherence').innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
+  document.getElementById('adherence').innerHTML = byMonth.map(([key, rows]) => {
+    const yr = Math.floor(key / 12), mo = key % 12;
+    const days = new Date(yr, mo + 1, 0).getDate();
+    const byDay = new Map(rows.map(r => [r.date.getDate(), r]));
+    const pct = MEDS.map(m => {
+      const vals = rows.map(r => r[m.key]).filter(v => v != null);
+      return vals.length ? `${m.label} ${Math.round(100 * vals.filter(Boolean).length / vals.length)}%` : null;
+    }).filter(Boolean).join(' · ');
+    let html = `<div class="adh-month"><h3>${fmtMonth(new Date(yr, mo, 1))} <span>— ${pct}</span></h3>` +
+      `<div class="adh-grid" style="grid-template-columns:auto repeat(${days}, minmax(0,1fr));"><div></div>`;
+    for(let d = 1; d <= days; d++) html += `<div class="dn">${d === 1 || d % 5 === 0 ? d : ''}</div>`;
+    MEDS.forEach(m => {
+      html += `<div class="med">${m.label}</div>`;
+      for(let d = 1; d <= days; d++){
+        const r = byDay.get(d), v = r ? r[m.key] : null;
+        const cls = v === true ? 'taken' : v === false ? 'missed' : '';
+        const what = v === true ? 'taken' : v === false ? 'not taken' : 'no entry';
+        html += `<div class="cell ${cls}" title="${m.label} · ${String(d).padStart(2,'0')}/${String(mo+1).padStart(2,'0')} · ${what}"></div>`;
+      }
+    });
+    return html + `</div></div>`;
+  }).join('');
+}
+
+// ---------- labs ----------
+function renderLabs(){
+  const entries = [];
+  if(state.baseline) entries.push({label:'Baseline', r:state.baseline});
+  past().filter(r => LABS.some(l => r[l.key] != null)).forEach(r => entries.push({label: fmtDMY(r.date), r}));
+  if(!entries.length){ document.getElementById('labs').innerHTML = '<div class="empty-note">No lab results yet</div>'; return; }
+  const head = `<tr><th>Test</th>${entries.map(e => `<th>${esc(e.label)}</th>`).join('')}<th>Change</th></tr>`;
+  const body = LABS.map(l => {
+    const vals = entries.map(e => e.r[l.key]);
+    const known = vals.filter(v => v != null);
+    let change = '—';
+    if(known.length >= 2){
+      const a = known[0], b = known[known.length - 1], d = b - a;
+      const pctTxt = a ? ` (${d > 0 ? '+' : ''}${fmtNum(100 * d / a, 0)}%)` : '';
+      // For all four tests here a lower value is the better direction.
+      change = d === 0 ? '0' : `<span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(d))}${pctTxt}</span>`;
+    }
+    return `<tr><td>${l.label} <span style="color:var(--muted)">${l.unit}</span></td>${vals.map(v => `<td>${fmtNum(v)}</td>`).join('')}<td>${change}</td></tr>`;
+  }).join('');
+  document.getElementById('labs').innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function renderAll(){
+  renderTiles();
+  renderDaily();
+  renderOzempic();
+  renderAdherence();
+  renderLabs();
+}
+
+// ---------- refresh ----------
+function setStatus(text, isErr){
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.classList.toggle('err', !!isErr);
+}
+
+let refreshing = false;
+async function refresh(){
+  if(refreshing || !document.body.classList.contains('mt-unlocked')) return;
+  refreshing = true;
+  setStatus('Loading…');
+  try{
+    const tabs = await loadAllTabs();
+    buildState(tabs);
+    renderAll();
+    try{ localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt: Date.now(), tabs})); } catch(e){}
+    setStatus('Updated ' + d3.timeFormat('%H:%M')(new Date()));
+  } catch(e){
+    setStatus(e.message || 'Could not load data', true);
+  } finally {
+    refreshing = false;
+  }
+}
+
+function loadSnapshot(){
+  try{
+    const snap = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null');
+    if(!snap || !snap.tabs) return;
+    buildState(snap.tabs);
+    renderAll();
+    setStatus('Showing saved data from ' + d3.timeFormat('%d/%m %H:%M')(new Date(snap.savedAt)));
+  } catch(e){
+    try{ localStorage.removeItem(SNAPSHOT_KEY); } catch(_){}
+  }
+}
+
+// ---------- add / edit entry ----------
+// Saving goes through the proxy's write endpoint, which verifies the same ID token as every read.
+// It updates the row for that date if one exists (e.g. a pre-filled Ozempic day), otherwise inserts
+// a new row in date order under the right month heading, creating the heading for a new month.
+const ENTRY_URL = PROXY_BASE_URL + '/medtracker/entry';
+const entryModal = document.getElementById('entryModal');
+const fx = id => document.getElementById(id);
+function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function numOrEmpty(v){ return v == null ? '' : String(v); }
+
+function fillEntryForm(){
+  const iso = fx('fDate').value;
+  const existing = state.rows.find(r => toIsoDate(r.date) === iso);
+  fx('entryHint').textContent = existing
+    ? 'This date already has a row. Saving updates it.'
+    : 'No row for this date yet. Saving adds one.';
+  fx('fXigduo').checked = !!(existing && existing.xigduo);
+  fx('fVitd').checked = !!(existing && existing.vitd);
+  fx('fStator').checked = !!(existing && existing.stator);
+  fx('fOzempic').value = numOrEmpty(existing && existing.ozempic);
+  fx('fFasting').value = numOrEmpty(existing && existing.fasting);
+}
+function openEntry(){
+  fx('fDate').value = toIsoDate(new Date());
+  fx('entryError').textContent = '';
+  fillEntryForm();
+  entryModal.classList.add('open');
+  history.pushState({mtModal: true}, '');
+}
+function closeEntry(fromPop){
+  if(!entryModal.classList.contains('open')) return;
+  entryModal.classList.remove('open');
+  if(!fromPop && history.state && history.state.mtModal) history.back();
+}
+// The phone's Back button closes the window instead of leaving the app.
+window.addEventListener('popstate', () => closeEntry(true));
+
+async function saveEntry(ev){
+  ev.preventDefault();
+  const num = id => { const v = fx(id).value.trim(); return v === '' ? null : +v; };
+  const body = {
+    sheetId: SHEET_ID,
+    date: fx('fDate').value,
+    xigduo: fx('fXigduo').checked, vitd: fx('fVitd').checked, stator: fx('fStator').checked,
+    ozempic: num('fOzempic'), fasting: num('fFasting'),
+  };
+  if(!body.date){ fx('entryError').textContent = 'Pick a date.'; return; }
+  const btn = fx('entrySave');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  fx('entryError').textContent = '';
+  try{
+    const res = await fetch(ENTRY_URL, {
+      method: 'POST', cache: 'no-store',
+      headers: {'Content-Type':'application/json', Authorization: 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '')},
+      body: JSON.stringify(body),
+    });
+    if(res.status === 401){ fx('entryError').textContent = 'Session expired — sign out and sign in again.'; return; }
+    if(res.status === 404){ fx('entryError').textContent = 'Saving isn\'t set up on the proxy yet.'; return; }
+    if(!res.ok){
+      let msg = 'Save failed (' + res.status + ')';
+      try{ const j = await res.json(); if(j.error) msg += ': ' + j.error; } catch(e){}
+      fx('entryError').textContent = msg;
+      return;
+    }
+    closeEntry();
+    setStatus('Saved ' + fmtDM(new Date(body.date + 'T00:00')));
+    refresh();
+  } catch(e){
+    fx('entryError').textContent = 'Could not reach the server: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+fx('addBtn').addEventListener('click', openEntry);
+fx('entryCancel').addEventListener('click', () => closeEntry());
+fx('fDate').addEventListener('change', fillEntryForm);
+fx('entryCard').addEventListener('submit', saveEntry);
+entryModal.addEventListener('click', e => { if(e.target === entryModal) closeEntry(); });
+
+// Wired first, so a later failure can never leave the button dead.
+document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.querySelectorAll('#fastingRanges button').forEach(b => b.addEventListener('click', () => {
+  state.range = b.dataset.r;
+  renderDaily();
+}));
+document.getElementById('buildLine').textContent = /^\d+$/.test(BUILD_ID)
+  ? 'Build: ' + fmtDMY(new Date(+BUILD_ID * 1000)) + ' ' + d3.timeFormat('%H:%M')(new Date(+BUILD_ID * 1000))
+  : 'Build: local (not yet deployed)';
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if(state.rows.length){ renderDaily(); renderOzempic(); } }, 150);
+});
+setInterval(() => { if(document.visibilityState === 'visible') refresh(); }, REFRESH_MS);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') refresh(); });
+
+if(document.body.classList.contains('mt-unlocked')){
+  loadSnapshot();
+  refresh();
+}
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
