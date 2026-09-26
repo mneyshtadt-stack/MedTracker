@@ -1,5 +1,5 @@
 {
-  "id": "/MedTracker/?app=medtracker",
+  "id": "./",
   "name": "MedTracker",
   "short_name": "MedTracker",
   "description": "Personal medication and fasting sugar tracker",
