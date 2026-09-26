@@ -57,6 +57,8 @@
   #lockCard p{margin:0 0 18px; color:var(--ink-2); font-size:14px;}
   #googleSignInBtn{display:flex; justify-content:center; min-height:44px;}
   #lockError{color:var(--bad-text); font-size:13px; margin-top:10px; min-height:1em;}
+  #webauthnLoginBtn{display:none; width:100%; max-width:260px; margin:14px auto 0; font:inherit; font-size:14px;
+    padding:10px 14px; border-radius:22px; cursor:pointer; border:1px solid var(--series-1); background:var(--series-1); color:#fff;}
 
   header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
   h1{margin:0; font-size:24px; display:flex; align-items:center; gap:10px;}
@@ -175,6 +177,7 @@
     <h2>MedTracker</h2>
     <p>Sign in with your Google account to continue.</p>
     <div id="googleSignInBtn"></div>
+    <button id="webauthnLoginBtn" type="button">Unlock with Face ID / Fingerprint</button>
     <div id="lockError"></div>
   </div>
 </div>
@@ -182,9 +185,10 @@
 <script>
   const GOOGLE_WEB_CLIENT_ID = '179631696884-t1r997qilgcbs5c9feddokdofu74avnp.apps.googleusercontent.com';
   const ALLOWED_GOOGLE_EMAIL = 'mneyshtadt@gmail.com';
-  // Its own key rather than SheetPulse's pf_idToken: both apps live on the same github.io origin,
-  // so a shared key would mean signing out of one silently signs you out of the other.
+  // Its own key rather than SheetPulse's pf_idToken (the two apps once shared the github.io origin).
   const TOKEN_KEY = 'mt_idToken';
+  // Set once this device has a registered fingerprint / Face ID credential; kept across sign-out.
+  const WEBAUTHN_FLAG = 'mt_webauthn_device';
 
   function mtDecodeJwt(token){
     const payload = token.split('.')[1];
@@ -199,8 +203,109 @@
     const avatar = payload.picture
       ? `<img src="${payload.picture}" alt="" referrerpolicy="no-referrer" onerror="this.remove()" style="width:22px; height:22px; border-radius:50%; vertical-align:-6px; margin-right:8px;">`
       : '';
-    el.innerHTML = `${avatar}<a href="#" id="mtSignOutLink">Sign out</a>`;
+    // A fingerprint session token carries no photo -- name the account in words instead.
+    const who = payload.picture ? '' : `Signed in as ${String(payload.email || '').replace(/[<>&"]/g, '')} &middot; `;
+    // Registering needs a real Google sign-in (payload.picture/email_verified only come from Google).
+    const offer = mtWebAuthnSupported() && payload.email_verified && localStorage.getItem(WEBAUTHN_FLAG) !== '1'
+      ? ` &middot; <a href="#" id="mtEnableWebAuthnLink">Enable Face ID / Fingerprint</a>` : '';
+    el.innerHTML = `${avatar}${who}<a href="#" id="mtSignOutLink">Sign out</a>${offer}`;
     document.getElementById('mtSignOutLink').addEventListener('click', function(e){ e.preventDefault(); mtSignOut(); });
+    const en = document.getElementById('mtEnableWebAuthnLink');
+    if(en) en.addEventListener('click', function(e){ e.preventDefault(); mtWebAuthnRegister(); });
+  }
+
+  // ---- Fingerprint / Face ID (WebAuthn) ----
+  // Same flow as SheetPulse, against the same proxy endpoints; the proxy keeps MedTracker's
+  // credentials separate from SheetPulse's because they belong to different sites.
+  function mtWebAuthnSupported(){
+    return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
+  }
+  function mtB64uToBuf(s){
+    const b = s.replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b + (b.length % 4 ? '='.repeat(4 - b.length % 4) : ''));
+    const buf = new Uint8Array(raw.length);
+    for(let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+    return buf.buffer;
+  }
+  function mtBufToB64u(buffer){
+    const bytes = new Uint8Array(buffer);
+    let s = '';
+    for(let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  // Registers this device, so later visits can skip Google sign-in (a 30-day session instead of ~1 hour).
+  async function mtWebAuthnRegister(){
+    try{
+      const idToken = localStorage.getItem(TOKEN_KEY);
+      const optRes = await fetch(PROXY_BASE_URL + '/webauthn/register-options', { method: 'POST', headers: { Authorization: 'Bearer ' + idToken } });
+      if(optRes.status === 401) throw new Error('sign out and sign in with Google again first (a fresh Google sign-in is needed)');
+      if(!optRes.ok) throw new Error('could not start (' + optRes.status + ')');
+      const options = await optRes.json();
+      const cred = await navigator.credentials.create({ publicKey: Object.assign({}, options, {
+        challenge: mtB64uToBuf(options.challenge),
+        user: Object.assign({}, options.user, { id: mtB64uToBuf(options.user.id) }),
+        excludeCredentials: (options.excludeCredentials || []).map(c => Object.assign({}, c, { id: mtB64uToBuf(c.id) })),
+      })});
+      const verifyRes = await fetch(PROXY_BASE_URL + '/webauthn/register-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({
+          id: cred.id, rawId: mtBufToB64u(cred.rawId), type: cred.type,
+          response: { clientDataJSON: mtBufToB64u(cred.response.clientDataJSON), attestationObject: mtBufToB64u(cred.response.attestationObject) },
+          clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+          deviceLabel: navigator.platform || 'This device',
+        }),
+      });
+      if(!verifyRes.ok) throw new Error('the server could not verify it');
+      localStorage.setItem(WEBAUTHN_FLAG, '1');
+      mtSetAccountLine(mtDecodeJwt(idToken));
+      alert('Face ID / Fingerprint unlock is now enabled on this device.');
+    } catch(e){
+      if(e.name === 'NotAllowedError') return;   // cancelled at the fingerprint prompt
+      alert('Could not enable biometric unlock: ' + e.message);
+    }
+  }
+
+  // Unlocks with the registered fingerprint instead of Google; the proxy verifies it and returns a
+  // 30-day session token, used exactly like a Google ID token from then on.
+  async function mtWebAuthnLogin(){
+    const errEl = document.getElementById('lockError');
+    errEl.textContent = '';
+    try{
+      const optRes = await fetch(PROXY_BASE_URL + '/webauthn/auth-options', { method: 'POST' });
+      if(optRes.status === 404){ localStorage.removeItem(WEBAUTHN_FLAG); throw new Error('none registered'); }
+      if(!optRes.ok) throw new Error('could not start');
+      const options = await optRes.json();
+      const cred = await navigator.credentials.get({ publicKey: Object.assign({}, options, {
+        challenge: mtB64uToBuf(options.challenge),
+        allowCredentials: (options.allowCredentials || []).map(c => Object.assign({}, c, { id: mtB64uToBuf(c.id) })),
+      })});
+      const verifyRes = await fetch(PROXY_BASE_URL + '/webauthn/auth-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cred.id, rawId: mtBufToB64u(cred.rawId), type: cred.type,
+          response: {
+            clientDataJSON: mtBufToB64u(cred.response.clientDataJSON),
+            authenticatorData: mtBufToB64u(cred.response.authenticatorData),
+            signature: mtBufToB64u(cred.response.signature),
+            userHandle: cred.response.userHandle ? mtBufToB64u(cred.response.userHandle) : null,
+          },
+          clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+        }),
+      });
+      if(!verifyRes.ok) throw new Error('verification failed');
+      const { token } = await verifyRes.json();
+      localStorage.setItem(TOKEN_KEY, token);
+      document.body.classList.add('mt-unlocked');
+      mtSetAccountLine(mtDecodeJwt(token));
+      loadSnapshot();
+      refresh();
+    } catch(e){
+      if(e.name === 'NotAllowedError') return;
+      errEl.textContent = 'Fingerprint unlock didn\'t work. Use Google sign-in instead.';
+    }
   }
 
   function mtSignOut(){
@@ -247,6 +352,11 @@
     if(window.google && google.accounts && google.accounts.id){
       google.accounts.id.initialize({ client_id: GOOGLE_WEB_CLIENT_ID, callback: mtHandleGoogleCredential });
       google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), {theme:'outline', size:'large', text:'signin_with'});
+    }
+    if(mtWebAuthnSupported() && localStorage.getItem(WEBAUTHN_FLAG) === '1'){
+      const btn = document.getElementById('webauthnLoginBtn');
+      btn.style.display = 'block';
+      btn.addEventListener('click', mtWebAuthnLogin);
     }
   });
 </script>
@@ -338,7 +448,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790421813";
+const BUILD_ID = "1790423115";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
