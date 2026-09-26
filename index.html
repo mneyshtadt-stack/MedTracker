@@ -459,7 +459,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790424594";
+const BUILD_ID = "1790426323";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -613,30 +613,28 @@ function daysAgoText(d){
 function renderTiles(){
   const p = past();
   const today = startOfDay(new Date());
+  // Fasting sugar is measured about once a week, so the tiles count readings, not calendar days.
   const withF = p.filter(r => r.fasting != null);
-  const last = withF[withF.length - 1];
-  const inRange = (from, to) => withF.filter(r => r.date >= from && r.date <= to).map(r => r.fasting);
-  const a7 = inRange(addDays(today,-6), today), prev7 = inRange(addDays(today,-13), addDays(today,-7));
-  const a30 = inRange(addDays(today,-29), today);
-  const m7 = mean(a7), mPrev = mean(prev7), m30 = mean(a30);
+  const last = withF[withF.length - 1], prev = withF[withF.length - 2];
+  const last4 = withF.slice(-4).map(r => r.fasting), before4 = withF.slice(-8, -4).map(r => r.fasting);
+  const from3m = new Date(today); from3m.setMonth(from3m.getMonth() - 3);
+  const a3m = withF.filter(r => r.date >= from3m).map(r => r.fasting);
+  const m4 = mean(last4), mBefore = mean(before4), m3m = mean(a3m);
+  const delta = (d, what) => d === 0 ? ` · same as ${what}`
+    : ` · <span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(d), 0)}</span> vs ${what}`;
 
   const oz = state.rows.filter(r => r.ozempic != null);
   const ozNow = oz.filter(r => !r.planned).pop();
   const ozNext = oz.find(r => r.planned);
   const a1c = p.filter(r => r.hba1c != null).pop() || (state.baseline && state.baseline.hba1c != null ? state.baseline : null);
 
-  let delta7 = '';
-  if(m7 != null && mPrev != null){
-    const d = m7 - mPrev;
-    delta7 = ` · <span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(d),1)}</span> vs prior week`;
-  }
   const tiles = [
     {lbl:'Latest fasting sugar', val: last ? `${fmtNum(last.fasting)} <small>mg/dL</small>` : '—',
-     sub: last ? `${fmtDM(last.date)} · ${daysAgoText(last.date)}` : 'No readings yet'},
-    {lbl:'7-day average', val: m7 != null ? `${fmtNum(m7,0)} <small>mg/dL</small>` : '—',
-     sub: `${a7.length} reading${a7.length === 1 ? '' : 's'}${delta7}`},
-    {lbl:'30-day average', val: m30 != null ? `${fmtNum(m30,0)} <small>mg/dL</small>` : '—',
-     sub: `${a30.length} reading${a30.length === 1 ? '' : 's'}`},
+     sub: last ? `${fmtDM(last.date)} · ${daysAgoText(last.date)}` + (prev ? delta(last.fasting - prev.fasting, fmtDM(prev.date)) : '') : 'No readings yet'},
+    {lbl:'Last 4 readings', val: m4 != null ? `${fmtNum(m4,0)} <small>mg/dL avg</small>` : '—',
+     sub: last4.length ? `since ${fmtDM(withF[withF.length - last4.length].date)}` + (before4.length ? delta(Math.round(m4) - Math.round(mBefore), '4 before') : '') : ''},
+    {lbl:'3-month average', val: m3m != null ? `${fmtNum(m3m,0)} <small>mg/dL</small>` : '—',
+     sub: `${a3m.length} reading${a3m.length === 1 ? '' : 's'}`},
     {lbl:'Ozempic', val: ozNow ? `${fmtNum(ozNow.ozempic,2)} <small>mg</small>` : '—',
      sub: ozNext ? `Next: ${fmtDM(ozNext.date)} · ${fmtNum(ozNext.ozempic,2)} mg` : (ozNow ? `Last: ${fmtDM(ozNow.date)}` : '')},
     {lbl:'HbA1c', val: a1c ? `${fmtNum(a1c.hba1c,1)} <small>%</small>` : '—',
