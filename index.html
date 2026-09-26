@@ -63,6 +63,9 @@
   header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
   h1{margin:0; font-size:24px; display:flex; align-items:center; gap:10px;}
   .brand{margin:0; line-height:0;}
+  /* Logo with the name to its right, like SheetPulse's header. */
+  .brand-row{display:flex; align-items:center; gap:14px; margin:0; font-size:34px; font-weight:700; letter-spacing:-0.01em;}
+  @media (max-width:420px){ .brand-row{font-size:28px; gap:12px;} .brand-row .brand-logo{width:56px; height:56px;} }
   .brand-logo{display:block;}
   #lockCard .brand{display:flex; justify-content:center; margin:0 0 12px;}
   #accountLine{font-size:13px; color:var(--ink-2); margin-top:6px;}
@@ -379,7 +382,7 @@
 <div class="wrap">
   <header>
     <div>
-      <h1 class="brand"><svg class="brand-logo" viewBox="0 0 192 192" width="84" height="84" role="img" aria-label="MedTracker"><use href="#mtLogo"></use></svg></h1>
+      <h1 class="brand-row"><svg class="brand-logo" viewBox="0 0 192 192" width="64" height="64" aria-hidden="true"><use href="#mtLogo"></use></svg>MedTracker</h1>
       <div id="accountLine"></div>
     </div>
     <div class="hdr-right">
@@ -456,7 +459,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790424197";
+const BUILD_ID = "1790424594";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
