@@ -62,6 +62,9 @@
 
   header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
   h1{margin:0; font-size:24px; display:flex; align-items:center; gap:10px;}
+  .brand{margin:0; line-height:0;}
+  .brand-logo{display:block;}
+  #lockCard .brand{display:flex; justify-content:center; margin:0 0 12px;}
   #accountLine{font-size:13px; color:var(--ink-2); margin-top:6px;}
   .hdr-right{text-align:right; font-size:12px; color:var(--muted);}
   #refreshBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer;
@@ -167,14 +170,22 @@
 </head>
 <body>
 <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
+<!-- The MedTracker logo with its wordmark, same design as the app icon (icon-192.png / icon-512.png). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="mtLogo">
+      <rect width="192" height="192" rx="36" fill="#0d1b2a"></rect>
+      <g transform="translate(24.96 10) scale(0.74)">
+        <path d="M96 30 C 96 30 48 88 48 118 A 48 48 0 0 0 144 118 C 144 88 96 30 96 30 Z" fill="#2dd4bf"></path>
+        <polyline points="58,122 80,122 90,100 102,142 112,112 134,122" fill="none" stroke="#0d1b2a" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>
+      </g>
+      <text x="96" y="165" text-anchor="middle" fill="#ffffff" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-weight="600" font-size="25">MedTracker</text>
+    </g>
+  </defs>
+</svg>
 <div id="lockScreen">
   <div id="lockCard">
-    <svg viewBox="0 0 192 192" width="56" height="56" aria-hidden="true">
-      <rect width="192" height="192" rx="36" fill="#0d1b2a"></rect>
-      <path d="M96 30 C 96 30 48 88 48 118 A 48 48 0 0 0 144 118 C 144 88 96 30 96 30 Z" fill="#2dd4bf"></path>
-      <polyline points="58,122 80,122 90,100 102,142 112,112 134,122" fill="none" stroke="#0d1b2a" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>
-    </svg>
-    <h2>MedTracker</h2>
+    <h2 class="brand"><svg class="brand-logo" viewBox="0 0 192 192" width="120" height="120" role="img" aria-label="MedTracker"><use href="#mtLogo"></use></svg></h2>
     <p>Sign in with your Google account to continue.</p>
     <div id="googleSignInBtn"></div>
     <button id="webauthnLoginBtn" type="button">Unlock with Face ID / Fingerprint</button>
@@ -368,14 +379,7 @@
 <div class="wrap">
   <header>
     <div>
-      <h1>
-        <svg viewBox="0 0 192 192" width="1.2em" height="1.2em" aria-hidden="true">
-          <rect width="192" height="192" rx="36" fill="#0d1b2a"></rect>
-          <path d="M96 30 C 96 30 48 88 48 118 A 48 48 0 0 0 144 118 C 144 88 96 30 96 30 Z" fill="#2dd4bf"></path>
-          <polyline points="58,122 80,122 90,100 102,142 112,112 134,122" fill="none" stroke="#0d1b2a" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>
-        </svg>
-        MedTracker
-      </h1>
+      <h1 class="brand"><svg class="brand-logo" viewBox="0 0 192 192" width="84" height="84" role="img" aria-label="MedTracker"><use href="#mtLogo"></use></svg></h1>
       <div id="accountLine"></div>
     </div>
     <div class="hdr-right">
@@ -452,7 +456,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790423586";
+const BUILD_ID = "1790424197";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
