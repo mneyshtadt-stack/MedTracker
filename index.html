@@ -19,7 +19,7 @@
     --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a;
     --band:rgba(12,163,12,0.08);
     --good-text:#006300; --bad-text:#b42323; --critical:#d03b3b;
-    --empty:#efeee9;
+    --empty:#efeee9; --check:#3f9b4f; --unchecked:#7d7b75;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
@@ -29,7 +29,7 @@
       --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
       --band:rgba(12,163,12,0.14);
       --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
-      --empty:#262624;
+      --empty:#262624; --check:#3f9b4f; --unchecked:#8f8d86;
     }
   }
   :root[data-theme="dark"]{
@@ -39,7 +39,7 @@
     --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
     --band:rgba(12,163,12,0.14);
     --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
-    --empty:#262624;
+    --empty:#262624; --check:#3f9b4f; --unchecked:#8f8d86;
   }
 
   *{box-sizing:border-box;}
@@ -116,17 +116,20 @@
   .month-current{padding-bottom:12px;}
   .mc-head{display:flex; flex-wrap:wrap; align-items:baseline; column-gap:8px; font-size:13px; padding:4px 0 8px;}
   .mc-head span{color:var(--ink-2);}
-  .log-ok{color:var(--series-1); font-weight:600;}
-  .log-no{color:var(--critical);}
   tr.planned td{color:var(--muted);}
   .adh-grid{display:grid; gap:3px; align-items:center; justify-content:start;}
   .adh-grid .med{font-size:12px; color:var(--ink-2); white-space:nowrap; padding-right:6px;}
   .adh-grid .dn{font-size:9px; color:var(--muted); text-align:center; font-variant-numeric:tabular-nums;}
-  .cell{aspect-ratio:1; border-radius:3px; background:transparent; max-height:18px;}
+  /* Checkbox look, like the sheet: green box with a white tick = taken, empty box = not taken. */
+  .cell, .cb{aspect-ratio:1; border-radius:4px; background:transparent;
+    display:flex; align-items:center; justify-content:center;}
+  .cb{display:inline-flex; width:16px; height:16px; vertical-align:-3px;}
+  .cell.taken::after, .cb.taken::after{content:''; width:28%; height:52%; margin-top:-12%;
+    border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg);}
+  .cell.taken, .cb.taken{background:var(--check);}
+  .cell.missed, .cb.missed{box-shadow:inset 0 0 0 1.5px var(--unchecked);}
+  .cell.planned, .cb.planned{box-shadow:inset 0 0 0 1px var(--muted); opacity:0.6;}
   .cell.blank{background:var(--empty);}
-  .cell.taken{background:var(--series-1);}
-  .cell.missed{background:transparent; box-shadow:inset 0 0 0 1.5px var(--critical);}
-  .cell.planned{background:transparent; box-shadow:inset 0 0 0 1px var(--muted);}
   .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); margin-top:10px;}
   .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px;}
 
@@ -275,9 +278,8 @@
     <div class="card-sub">Only days with an entry in the sheet are shown</div>
     <div id="adherence"></div>
     <div class="legend">
-      <span><i style="background:var(--series-1)"></i>Taken</span>
-      <span><i style="box-shadow:inset 0 0 0 1.5px var(--critical)"></i>Not taken</span>
-      <span><i style="box-shadow:inset 0 0 0 1px var(--muted)"></i>Planned</span>
+      <span><span class="cb taken"></span> Taken</span>
+      <span><span class="cb missed"></span> Not taken</span>
     </div>
   </section>
 
@@ -336,7 +338,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790420161";
+const BUILD_ID = "1790420603";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -717,7 +719,8 @@ function renderLog(){
   const rows = state.rows.filter(r => MEDS.some(m => r[m.key] != null) || r.fasting != null || r.ozempic != null);
   const el = document.getElementById('dailyTable');
   if(!rows.length){ el.innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
-  const tick = (v, planned) => planned ? '' : v === true ? '<span class="log-ok">✓</span>' : v === false ? '<span class="log-no">✗</span>' : '—';
+  const tick = (v, planned) => planned ? '<span class="cb planned" title="planned"></span>'
+    : v === true ? '<span class="cb taken" title="taken"></span>' : v === false ? '<span class="cb missed" title="not taken"></span>' : '—';
   renderByYear(el, 'log', rows, {
     summary: logText,
     monthBody: g => `<div class="scroll-x"><table><thead><tr><th>Date</th>${MEDS.map(m => `<th>${m.label}</th>`).join('')}<th>Ozempic (mg)</th><th>Fasting</th></tr></thead><tbody>` +
@@ -745,19 +748,24 @@ function renderAdherence(){
   const rows = state.rows.filter(r => MEDS.some(m => r[m.key] != null));
   const el = document.getElementById('adherence');
   if(!rows.length){ el.innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
+  // How many day columns fit at a readable size (at least ~17px a box) on this screen.
+  adhMaxCols = Math.max(7, Math.floor(((el.clientWidth || 320) - 60) / 20));
   renderByYear(el, 'adh', rows, {summary: pctText, monthBody: adherenceGrid});
 }
 
+let adhMaxCols = 16;
 function adherenceGrid(g){
     const {mo} = g;
     // Only days that have a row in the sheet get a column; days with no entry are left out.
     const cols = g.rows.slice().sort((a,b) => a.date - b.date);
-    // More than 16 days would squeeze the squares to a few pixels on a phone, so a fuller month is
-    // split into two stacked halves.
-    const chunks = cols.length > 16 ? [cols.slice(0, Math.ceil(cols.length / 2)), cols.slice(Math.ceil(cols.length / 2))] : [cols];
-    const per = chunks[0].length;
+    // A month that won't fit in one row at a readable size (a phone, a full month) is split
+    // into evenly sized stacked rows; on a wide screen it stays one row with bigger boxes.
+    const nRows = Math.max(1, Math.ceil(cols.length / adhMaxCols));
+    const per = Math.max(1, Math.ceil(cols.length / nRows));
+    const chunks = [];
+    for(let i = 0; i < cols.length; i += per) chunks.push(cols.slice(i, i + per));
     const grids = chunks.map(chunk => {
-      let grid = `<div class="adh-grid" style="grid-template-columns:52px repeat(${per}, minmax(0,18px));"><div></div>`;
+      let grid = `<div class="adh-grid" style="grid-template-columns:52px repeat(${per}, minmax(0,30px));"><div></div>`;
       chunk.forEach(r => { grid += `<div class="dn">${r.date.getDate()}</div>`; });
       for(let k = chunk.length; k < per; k++) grid += `<div></div>`;
       MEDS.forEach(m => {
@@ -937,7 +945,7 @@ document.getElementById('buildLine').textContent = /^\d+$/.test(BUILD_ID)
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if(state.rows.length){ renderDaily(); renderOzempic(); } }, 150);
+  resizeTimer = setTimeout(() => { if(state.rows.length){ renderAdherence(); renderDaily(); renderOzempic(); } }, 150);
 });
 setInterval(() => { if(document.visibilityState === 'visible') refresh(); }, REFRESH_MS);
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') refresh(); });
