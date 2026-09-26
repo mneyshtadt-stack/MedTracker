@@ -112,6 +112,10 @@
   details.month > summary .tag{font-size:11px; color:var(--muted); border:1px solid var(--grid); border-radius:10px; padding:0 7px;}
   .month-body{padding:0 0 12px 26px;}
   #adherence .month-body{padding-left:0;}
+  .year-body{padding:0 0 4px 26px;}
+  .month-current{padding-bottom:12px;}
+  .mc-head{display:flex; flex-wrap:wrap; align-items:baseline; column-gap:8px; font-size:13px; padding:4px 0 8px;}
+  .mc-head span{color:var(--ink-2);}
   .log-ok{color:var(--series-1); font-weight:600;}
   .log-no{color:var(--critical);}
   tr.planned td{color:var(--muted);}
@@ -332,7 +336,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790419609";
+const BUILD_ID = "1790420161";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -649,26 +653,53 @@ function renderDaily(){
 }
 
 // ---------- month groups ----------
-// Each month is a <details> with a +/- toggle, like the sheet's row groups. The current month starts
-// open and every other one closed; after that, whatever you open or close is remembered per device.
+// The current month is always shown open. Earlier months sit inside a collapsed group per year
+// (named like the sheet's year tab), each month with its own +/- toggle, like the sheet's row
+// groups. Months that only hold planned rows are left out. Whatever you open or close is
+// remembered per device.
 const MONTH_STATE_KEY = 'mt_months';
 function monthState(){ try{ return JSON.parse(localStorage.getItem(MONTH_STATE_KEY) || '{}'); } catch(e){ return {}; } }
 function monthKey(yr, mo){ return `${yr}-${String(mo + 1).padStart(2,'0')}`; }
-function isMonthOpen(section, yr, mo){
-  const saved = monthState()[section + ':' + monthKey(yr, mo)];
-  if(saved != null) return saved;
-  const now = new Date();
-  return yr === now.getFullYear() && mo === now.getMonth();
-}
+function isOpen(key){ return monthState()[key] === true; }
 function monthGroups(rows){
   // Newest month first, like the sheet.
   return d3.groups(rows, r => r.date.getFullYear() * 12 + r.date.getMonth()).sort((a,b) => b[0] - a[0])
-    .map(([k, rs]) => ({yr: Math.floor(k / 12), mo: k % 12, rows: rs, planned: rs.every(r => r.planned)}));
+    .map(([k, rs]) => ({yr: Math.floor(k / 12), mo: k % 12, key: k, rows: rs, planned: rs.every(r => r.planned)}));
 }
-function monthDetails(section, g, summaryHtml, bodyHtml){
-  const open = isMonthOpen(section, g.yr, g.mo) ? ' open' : '';
-  return `<details class="month" data-mkey="${section}:${monthKey(g.yr, g.mo)}" data-initial="${open ? 1 : 0}"${open}>` +
-    `<summary><b>${fmtMonth(new Date(g.yr, g.mo, 1))}</b>${summaryHtml}</summary><div class="month-body">${bodyHtml}</div></details>`;
+function groupDetails(key, cls, titleHtml, summaryHtml, bodyHtml){
+  const open = isOpen(key) ? ' open' : '';
+  return `<details class="month ${cls}" data-mkey="${key}" data-initial="${open ? 1 : 0}"${open}>` +
+    `<summary><b>${titleHtml}</b>${summaryHtml}</summary><div class="${cls}-body">${bodyHtml}</div></details>`;
+}
+// cfg: summary(rows) returns plain summary text; monthBody(group) returns html.
+function renderByYear(el, section, rows, cfg){
+  const now = new Date(), curKey = now.getFullYear() * 12 + now.getMonth();
+  const span = parts => { const t = parts.filter(Boolean).join(' · '); return t ? ` <span>· ${t}</span>` : ''; };
+  const groups = monthGroups(rows).filter(g => g.key <= curKey);
+  const cur = groups.find(g => g.key === curKey);
+  let html = `<div class="month-current"><div class="mc-head"><b>${fmtMonth(now)}</b>${cur ? span([cfg.summary(cur.rows)]) : ''}</div>` +
+    (cur ? cfg.monthBody(cur) : `<div class="card-sub">No entries yet this month</div>`) + `</div>`;
+  const older = groups.filter(g => g.key < curKey);
+  d3.groups(older, g => g.yr).sort((a,b) => b[0] - a[0]).forEach(([yr, months]) => {
+    const n = months.length;
+    const count = `${n} ${yr === now.getFullYear() ? 'earlier ' : ''}month${n === 1 ? '' : 's'}`;
+    const inner = months.map(g => groupDetails(`${section}:${monthKey(g.yr, g.mo)}`, 'month', fmtMonth(new Date(g.yr, g.mo, 1)),
+      span([cfg.summary(g.rows)]), cfg.monthBody(g))).join('');
+    html += groupDetails(`${section}:${yr}`, 'year', yr, span([count, cfg.summary(months.flatMap(g => g.rows))]), inner);
+  });
+  el.innerHTML = html;
+}
+function pctText(rows){
+  const done = rows.filter(r => !r.planned);
+  return MEDS.map(m => {
+    const vals = done.map(r => r[m.key]).filter(v => v != null);
+    return vals.length ? `${m.label} ${Math.round(100 * vals.filter(Boolean).length / vals.length)}%` : null;
+  }).filter(Boolean).join(' · ');
+}
+function logText(rows){
+  const done = rows.filter(r => !r.planned);
+  const fast = done.filter(r => r.fasting != null).map(r => r.fasting);
+  return `${done.length} day${done.length === 1 ? '' : 's'}${fast.length ? ` · avg fasting ${fmtNum(mean(fast), 0)}` : ''}`;
 }
 document.addEventListener('toggle', e => {
   const d = e.target;
@@ -687,19 +718,14 @@ function renderLog(){
   const el = document.getElementById('dailyTable');
   if(!rows.length){ el.innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
   const tick = (v, planned) => planned ? '' : v === true ? '<span class="log-ok">✓</span>' : v === false ? '<span class="log-no">✗</span>' : '—';
-  el.innerHTML = monthGroups(rows).map(g => {
-    const fast = g.rows.filter(r => !r.planned && r.fasting != null).map(r => r.fasting);
-    const n = g.rows.filter(r => !r.planned).length;
-    const summary = g.planned
-      ? ` <span class="tag">planned</span>`
-      : ` <span>· ${n} day${n === 1 ? '' : 's'}${fast.length ? ` · avg fasting ${fmtNum(mean(fast), 0)}` : ''}</span>`;
-    const body = `<div class="scroll-x"><table><thead><tr><th>Date</th>${MEDS.map(m => `<th>${m.label}</th>`).join('')}<th>Ozempic (mg)</th><th>Fasting</th></tr></thead><tbody>` +
+  renderByYear(el, 'log', rows, {
+    summary: logText,
+    monthBody: g => `<div class="scroll-x"><table><thead><tr><th>Date</th>${MEDS.map(m => `<th>${m.label}</th>`).join('')}<th>Ozempic (mg)</th><th>Fasting</th></tr></thead><tbody>` +
       g.rows.slice().reverse().map(r => `<tr class="${r.planned ? 'planned' : ''}"><td>${fmtDM(r.date)}${r.planned ? ' · planned' : ''}</td>` +
         MEDS.map(m => `<td>${tick(r[m.key], r.planned)}</td>`).join('') +
         `<td>${r.ozempic == null ? '—' : fmtNum(r.ozempic,2)}</td><td>${fmtNum(r.fasting)}</td></tr>`).join('') +
-      `</tbody></table></div>`;
-    return monthDetails('log', g, summary, body);
-  }).join('');
+      `</tbody></table></div>`,
+  });
 }
 
 function renderOzempic(){
@@ -719,16 +745,13 @@ function renderAdherence(){
   const rows = state.rows.filter(r => MEDS.some(m => r[m.key] != null));
   const el = document.getElementById('adherence');
   if(!rows.length){ el.innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
-  el.innerHTML = monthGroups(rows).map(g => {
+  renderByYear(el, 'adh', rows, {summary: pctText, monthBody: adherenceGrid});
+}
+
+function adherenceGrid(g){
     const {mo} = g;
     // Only days that have a row in the sheet get a column; days with no entry are left out.
     const cols = g.rows.slice().sort((a,b) => a.date - b.date);
-    const done = g.rows.filter(r => !r.planned);
-    const pct = MEDS.map(m => {
-      const vals = done.map(r => r[m.key]).filter(v => v != null);
-      return vals.length ? `${m.label} ${Math.round(100 * vals.filter(Boolean).length / vals.length)}%` : null;
-    }).filter(Boolean).join(' · ');
-    const summary = g.planned ? ` <span class="tag">planned</span>` : (pct ? ` <span>· ${pct}</span>` : '');
     // More than 16 days would squeeze the squares to a few pixels on a phone, so a fuller month is
     // split into two stacked halves.
     const chunks = cols.length > 16 ? [cols.slice(0, Math.ceil(cols.length / 2)), cols.slice(Math.ceil(cols.length / 2))] : [cols];
@@ -749,8 +772,7 @@ function renderAdherence(){
       });
       return grid + `</div>`;
     });
-    return monthDetails('adh', g, summary, grids.join('<div style="height:10px"></div>'));
-  }).join('');
+    return grids.join('<div style="height:10px"></div>');
 }
 
 // ---------- labs ----------
