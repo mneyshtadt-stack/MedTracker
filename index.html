@@ -151,6 +151,28 @@
   details{margin-top:10px; font-size:13px;}
   summary{cursor:pointer; color:var(--ink-2);}
 
+  /* Lab results */
+  .lab-group{font-size:13px; font-weight:600; color:var(--ink-2); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.04em;}
+  .lab-group:first-child{margin-top:4px;}
+  .lab-cards{display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px;}
+  .lab-card{border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:var(--page);}
+  .lab-top{display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .lab-name{font-size:13px; font-weight:600;}
+  .lab-mid{display:flex; justify-content:space-between; align-items:center; gap:8px; margin:4px 0 2px;}
+  .lab-val{font-size:24px; font-weight:600;}
+  .lab-val small{font-size:12px; font-weight:400; color:var(--ink-2);}
+  .lab-sub{font-size:11.5px; color:var(--muted);}
+  .spark{flex:0 0 auto;}
+  .chip{display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:10px; white-space:nowrap;}
+  .chip.ok{color:var(--good-text); background:rgba(12,163,12,0.12);}
+  .chip.high, .chip.low{color:var(--bad-text); background:rgba(208,59,59,0.12);}
+  .lab-table td.st-high, .lab-table td.st-low{color:var(--bad-text); font-weight:600;}
+  .muted{color:var(--muted);}
+  details.lab-panel{border-top:1px solid var(--grid); padding:8px 0;}
+  details.lab-panel:first-of-type{margin-top:12px;}
+  details.lab-panel > summary{cursor:pointer; font-size:13px; line-height:1.9;}
+  details.lab-panel .scroll-x{margin-top:6px;}
+
   #addBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer; margin-right:6px;
     border:1px solid var(--series-1); background:var(--series-1); color:#fff;}
   #entryModal{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
@@ -432,7 +454,7 @@
 
   <section class="card">
     <h2>Lab results</h2>
-    <div class="card-sub">Change is from the first result to the latest</div>
+    <div class="card-sub">Latest result, change since the previous test, and the normal range or target from the lab report</div>
     <div class="scroll-x" id="labs"></div>
   </section>
 </div>
@@ -461,7 +483,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790492013";
+const BUILD_ID = "1790492482";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -482,6 +504,7 @@ const MEDS = [
    uses:'High cholesterol (atorvastatin, a statin).',
    benefits:['Lowers LDL ("bad") cholesterol and triglycerides', 'Reduces the risk of heart attack and stroke']},
 ];
+const LABS_TAB = 'Labs';
 const LABS = [
   {key:'glucoseB', label:'Glucose (B)', unit:'mg/dL'},
   {key:'hba1c',    label:'HbA1c',       unit:'%'},
@@ -520,10 +543,12 @@ function fetchViaProxy(url){
 
 // One tab per year (2026, 2027, ...), found automatically so a new year needs no code change.
 async function loadAllTabs(){
-  let years;
+  let years, hasLabs = false;
   try{
     const list = await (await fetchViaProxy(proxyListUrl())).json();
-    years = (list.tabs || []).map(t => t.title).filter(t => /^\d{4}$/.test(t)).sort();
+    const titles = (list.tabs || []).map(t => t.title);
+    years = titles.filter(t => /^\d{4}$/.test(t)).sort();
+    hasLabs = titles.includes(LABS_TAB);
   } catch(e){
     if(!localStorage.getItem(TOKEN_KEY)) throw e;
     years = [];
@@ -533,6 +558,8 @@ async function loadAllTabs(){
   for(const y of years){
     tabs[y] = await (await fetchViaProxy(proxyUrl(y))).text();
   }
+  // Lab results live in their own "Labs" tab, one row per result (imported from YYMMDD.csv files).
+  if(hasLabs) tabs[LABS_TAB] = await (await fetchViaProxy(proxyUrl(LABS_TAB))).text();
   return tabs;
 }
 
@@ -590,7 +617,8 @@ function parseTab(csv, tabYear){
 
 function buildState(tabs){
   let rows = [], undated = [];
-  Object.keys(tabs).sort().forEach(y => {
+  state.labs = tabs[LABS_TAB] ? parseLabsTab(tabs[LABS_TAB]) : null;
+  Object.keys(tabs).filter(k => /^\d{4}$/.test(k)).sort().forEach(y => {
     const p = parseTab(tabs[y], y);
     rows = rows.concat(p.rows);
     undated = undated.concat(p.undatedLabs);
@@ -635,7 +663,9 @@ function renderTiles(){
   const oz = state.rows.filter(r => r.ozempic != null);
   const ozNow = oz.filter(r => !r.planned).pop();
   const ozNext = oz.find(r => r.planned);
-  const a1c = p.filter(r => r.hba1c != null).pop() || (state.baseline && state.baseline.hba1c != null ? state.baseline : null);
+  const labA1c = (state.labs || []).filter(x => x.test === 'HbA1c' && x.num != null).pop();
+  const a1c = labA1c ? {hba1c: labA1c.num, date: labA1c.date}
+    : (p.filter(r => r.hba1c != null).pop() || (state.baseline && state.baseline.hba1c != null ? state.baseline : null));
 
   const tiles = [
     {lbl:'Latest fasting sugar', val: last ? `${fmtNum(last.fasting)} <small>mg/dL</small>` : '—',
@@ -950,7 +980,137 @@ document.addEventListener('click', e => {
 });
 
 // ---------- labs ----------
+// Tier 1: key markers for the current treatment, shown as cards with a trend, in this order.
+const KEY_LABS = [
+  {group:'Diabetes',    tests:['HbA1c', 'Glucose']},
+  {group:'Cholesterol', tests:['LDL cholesterol', 'Non-HDL cholesterol', 'Triglycerides', 'HDL cholesterol', 'Total cholesterol']},
+  {group:'Liver',       tests:['ALT (GPT)', 'AST (GOT)']},
+  {group:'Kidneys',     tests:['eGFR', 'Creatinine', 'Albumin/creatinine ratio']},
+];
+// Tier 3: routine panels summarised as one line each ("all in range"), full table on demand.
+const SUMMARY_GROUPS = ['Blood count', 'Electrolytes & minerals', 'Urine'];
+
+// Labs tab columns: Date | Group | Test | Value | Unit | Low | High | Note. Each imported file brings
+// its own header row, so repeated headers are skipped. Dates may come back as yyyy-mm-dd or dd/mm/yyyy.
+function parseLabDate(s){
+  s = String(s || '').trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if(m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/.exec(s);
+  if(m) return new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1]);
+  return null;
+}
+function parseLabsTab(csv){
+  const grid = Papa.parse(csv.trim(), {skipEmptyLines:true}).data;
+  const out = [];
+  grid.forEach(r => {
+    const date = parseLabDate(r[0]);
+    const test = String(r[2] || '').trim();
+    if(!date || !test) return;
+    const raw = String(r[3] == null ? '' : r[3]).trim();
+    const num = parseFloat(raw.replace(/[<>,\s]/g, ''));
+    out.push({date, group: String(r[1] || '').trim() || 'Other', test, raw,
+      num: isNaN(num) ? null : num, op: /^</.test(raw) ? '<' : /^>/.test(raw) ? '>' : '',
+      unit: String(r[4] || '').trim(), low: toNum(r[5]), high: toNum(r[6]), note: String(r[7] || '').trim()});
+  });
+  return out.sort((a,b) => a.date - b.date);
+}
+
+// 'ok' | 'high' | 'low' | null (no range, or no value)
+function labStatus(x){
+  if(x.num == null) return /^(negative|normal)$/i.test(x.raw) ? 'ok' : null;
+  if(x.low == null && x.high == null) return null;
+  const v = x.op === '<' ? x.num - 1e-9 : x.op === '>' ? x.num + 1e-9 : x.num;
+  if(x.high != null && v > x.high) return 'high';
+  if(x.low != null && v < x.low) return 'low';
+  return 'ok';
+}
+function labRange(x){
+  if(x.low != null && x.high != null) return x.low === 0 ? `below ${fmtNum(x.high)}` : `${fmtNum(x.low)}–${fmtNum(x.high)}`;
+  if(x.high != null) return `below ${fmtNum(x.high)}`;
+  if(x.low != null) return `above ${fmtNum(x.low)}`;
+  return '';
+}
+const STATUS_TXT = {ok:'✓ In range', high:'▲ High', low:'▼ Low'};
+function chip(st){ return st ? `<span class="chip ${st}">${STATUS_TXT[st]}</span>` : ''; }
+function labValue(x){ return x.raw === '' ? '—' : esc(x.raw); }
+
+function labSpark(series){
+  const pts = series.filter(s => s.num != null);
+  if(pts.length < 2) return '';
+  const W = 96, H = 30, pad = 4;
+  const xs = d3.scaleTime().domain(d3.extent(pts, p => p.date)).range([pad, W - pad]);
+  const [lo, hi] = d3.extent(pts, p => p.num);
+  const ys = d3.scaleLinear().domain(lo === hi ? [lo - 1, hi + 1] : [lo, hi]).range([H - pad, pad]);
+  const line = d3.line().x(p => xs(p.date)).y(p => ys(p.num))(pts);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">` +
+    `<path d="${line}" fill="none" stroke="var(--series-1)" stroke-width="2"/>` +
+    pts.map((p, i) => `<circle cx="${xs(p.date)}" cy="${ys(p.num)}" r="${i === pts.length - 1 ? 4 : 3}" fill="var(--series-1)" stroke="var(--surface)" stroke-width="1.5"/>`).join('') + `</svg>`;
+}
+
 function renderLabs(){
+  if(!state.labs || !state.labs.length) return renderLabsLegacy();
+  const el = document.getElementById('labs');
+  const byTest = d3.group(state.labs, x => x.test);
+  const used = new Set();
+
+  // Tier 1: cards
+  let html = KEY_LABS.map(g => {
+    const cards = g.tests.filter(t => byTest.has(t)).map(t => {
+      used.add(t);
+      const series = byTest.get(t);
+      const latest = series[series.length - 1];
+      const prev = series.slice(0, -1).filter(s => s.num != null).pop();
+      let change = '';
+      if(prev && latest.num != null){
+        const d = latest.num - prev.num;
+        const ad = Math.abs(d), dp = ad < 1 ? 2 : ad < 10 ? 1 : 0;
+        change = d === 0 ? `same as ${fmtDM(prev.date)}` : `${d > 0 ? '▲' : '▼'} ${fmtNum(ad, dp)} from ${esc(prev.raw)} on ${fmtDM(prev.date)}`;
+      } else if(series.length > 1 && latest.num != null){
+        change = `first result (not measured on ${fmtDM(series[0].date)})`;
+      }
+      const note = latest.note ? ` title="${esc(latest.note)}"` : '';
+      return `<div class="lab-card"${note}><div class="lab-top"><span class="lab-name">${esc(t)}</span>${chip(labStatus(latest))}</div>` +
+        `<div class="lab-mid"><span class="lab-val">${labValue(latest)} <small>${esc(latest.unit)}</small></span>${labSpark(series)}</div>` +
+        `<div class="lab-sub">${change ? change + ' · ' : ''}${fmtDMY(latest.date)}${labRange(latest) ? ` · ${latest.low != null && latest.high != null ? 'normal' : 'target'} ${labRange(latest)}` : ''}</div></div>`;
+    }).join('');
+    return cards ? `<h3 class="lab-group">${esc(g.group)}</h3><div class="lab-cards">${cards}</div>` : '';
+  }).join('');
+
+  // Tier 2: other tests, latest value each
+  const others = [...byTest.keys()].filter(t => !used.has(t) && !SUMMARY_GROUPS.includes(byTest.get(t)[0].group));
+  if(others.length){
+    html += `<h3 class="lab-group">Other tests</h3><div class="scroll-x"><table class="lab-table"><thead><tr><th>Test</th><th>Result</th><th>Status</th><th>Normal</th><th>Date</th></tr></thead><tbody>` +
+      others.map(t => { const x = byTest.get(t)[byTest.get(t).length - 1];
+        return `<tr${x.note ? ` title="${esc(x.note)}"` : ''}><td>${esc(t)}</td><td>${labValue(x)} <span class="muted">${esc(x.unit)}</span></td><td>${chip(labStatus(x))}</td><td class="muted">${labRange(x)}</td><td>${fmtDM(x.date)}</td></tr>`; }).join('') +
+      `</tbody></table></div>`;
+  }
+
+  // Tier 3: one summary line per routine panel, full table behind "Show all"
+  const dates = [...new Set(state.labs.map(x => +x.date))].sort((a,b) => a - b).map(d => new Date(d));
+  SUMMARY_GROUPS.forEach(grp => {
+    const tests = [...byTest.keys()].filter(t => byTest.get(t)[0].group === grp);
+    if(!tests.length) return;
+    const latestDate = new Date(Math.max(...tests.map(t => +byTest.get(t)[byTest.get(t).length - 1].date)));
+    const latest = tests.map(t => byTest.get(t)[byTest.get(t).length - 1]).filter(x => +x.date === +latestDate);
+    const off = latest.filter(x => labStatus(x) === 'high' || labStatus(x) === 'low');
+    const line = off.length
+      ? `<span class="chip high">${off.length} out of range</span> ${off.map(x => `${esc(x.test)} ${labValue(x)} (${labStatus(x)})`).join(', ')}`
+      : `<span class="chip ok">✓ All in range</span>`;
+    const cols = dates.filter(d => tests.some(t => byTest.get(t).some(x => +x.date === +d)));
+    const table = `<div class="scroll-x"><table class="lab-table"><thead><tr><th>Test</th>${cols.map(d => `<th>${fmtDM(d)}</th>`).join('')}<th>Normal</th></tr></thead><tbody>` +
+      tests.map(t => { const s = byTest.get(t);
+        return `<tr><td>${esc(t)}</td>${cols.map(d => { const x = s.find(y => +y.date === +d);
+          return `<td class="${x ? 'st-' + (labStatus(x) || 'none') : ''}">${x ? labValue(x) : ''}</td>`; }).join('')}<td class="muted">${labRange(s[s.length - 1])}</td></tr>`; }).join('') +
+      `</tbody></table></div>`;
+    html += `<details class="lab-panel"><summary><b>${esc(grp)}</b> <span class="muted">· ${latest.length} tests on ${fmtDM(latestDate)}</span> ${line}</summary>${table}</details>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// Before the Labs tab exists: the four lab columns in the year tab.
+function renderLabsLegacy(){
   const entries = [];
   if(state.baseline) entries.push({label:'Baseline', r:state.baseline});
   past().filter(r => LABS.some(l => r[l.key] != null)).forEach(r => entries.push({label: fmtDMY(r.date), r}));
