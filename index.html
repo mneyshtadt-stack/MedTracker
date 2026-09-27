@@ -486,7 +486,7 @@
   <form id="labCard" class="modal-card" autocomplete="off">
     <h3 id="labTitle">Add lab report</h3>
     <div id="labStep1">
-      <div class="modal-hint">Saved as <b id="labName">YYMMDD.pdf</b> in <span id="labWhere">your "Laboratory test results" folder</span>, with a copy in Google Drive.</div>
+      <div class="modal-hint">Saved as <b id="labName">YYMMDD.pdf</b> in <span id="labWhere">your "Laboratory test results" folder</span>.</div>
       <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf"></div>
       <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate"></div>
       <div id="labFolderRow" class="modal-hint" style="display:none">Folder: <b id="labFolderName"></b> · <a href="#" id="labFolderChange">Change</a></div>
@@ -533,7 +533,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790512001";
+const BUILD_ID = "1790512501";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1342,8 +1342,8 @@ entryModal.addEventListener('click', e => { if(e.target === entryModal) closeEnt
 
 // ---------- add lab report ----------
 // 1. Save: the PDF goes into the "Laboratory test results" folder on this PC as YYMMDD.pdf (Chrome/Edge
-//    folder access, picked once and kept in IndexedDB), plus a copy in Google Drive next to Med Tracker
-//    (for the link in the sheet). On a phone it's downloaded instead.
+//    folder access, picked once and kept in IndexedDB) -- only there, not to Drive. On a phone it's
+//    downloaded instead.
 // 2. Claude, started by hand with "/add-lab-report YYMMDD" in the MedTracker folder, reads the PDF and
 //    writes YYMMDD.csv next to it (and rebuilds Lab results.xlsx).
 // 3. Sync: whenever MedTracker refreshes on this PC, any YYMMDD.csv in that folder that is new or changed
@@ -1414,14 +1414,6 @@ fx('labCopy').addEventListener('click', async () => {
   try{ await navigator.clipboard.writeText(fx('labCmd').textContent); fx('labCopy').textContent = 'Copied'; } catch(e){ fx('labCopy').textContent = 'Select & copy'; }
 });
 
-function fileToBase64(file){
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1]);
-    r.onerror = () => rej(r.error);
-    r.readAsDataURL(file);
-  });
-}
 async function labPost(path, body){
   const res = await fetch(PROXY_BASE_URL + path, {
     method: 'POST', cache: 'no-store',
@@ -1467,15 +1459,8 @@ fx('labCard').addEventListener('submit', async e => {
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       where = 'Downloads — move it to the "Laboratory test results" folder';
     }
-    // Copy in Google Drive, next to Med Tracker; its link goes into the sheet tab at sync time.
-    labBusy('Copying to Google Drive…');
-    let drive = '';
-    try{
-      const r = await labPost('/medtracker/lab-report/read', {sheetId: SHEET_ID, date, pdfBase64: await fileToBase64(file)});
-      if(r.pdfLink){ await kvSet('pdfLink:' + tab, r.pdfLink); drive = ' and copied to Google Drive'; }
-    } catch(err){ drive = ` (not copied to Google Drive: ${err.message})`; }
     labBusy('');
-    fx('labDone').innerHTML = `Saved <b>${esc(name)}</b> in ${esc(where)}${esc(drive)}. Next:`;
+    fx('labDone').innerHTML = `Saved <b>${esc(name)}</b> in ${esc(where)}. Next:`;
     fx('labCmd').textContent = '/add-lab-report ' + tab;
     fx('labCsv').textContent = tab + '.csv';
     fx('labCopy').textContent = 'Copy';
@@ -1516,7 +1501,7 @@ async function syncLabFolder(interactive){
         .map(r => [0,1,2,3,4,5,6,7].map(i => String(r[i] == null ? '' : r[i]).trim()));
       if(!rows.length) continue;
       setLabSync(`Adding ${tab} to the Lab results sheet…`);
-      const body = {sheetId: SHEET_ID, tab, rows, pdfLink: (await kvGet('pdfLink:' + tab)) || '', replace: inSheet};
+      const body = {sheetId: SHEET_ID, tab, rows, replace: inSheet};
       try{ await labPost('/medtracker/lab-report/save', body); }
       catch(err){ if(err.status !== 409) throw err; await labPost('/medtracker/lab-report/save', Object.assign(body, {replace: true})); }
       await kvSet('synced:' + tab, f.lastModified);
