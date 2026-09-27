@@ -483,7 +483,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790492482";
+const BUILD_ID = "1790492592";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -505,6 +505,8 @@ const MEDS = [
    benefits:['Lowers LDL ("bad") cholesterol and triglycerides', 'Reduces the risk of heart attack and stroke']},
 ];
 const LABS_TAB = 'Labs';
+// A lab report tab is named after its date, YYMMDD (the same name as the report's PDF).
+function isLabTab(name){ return /^\d{6}$/.test(name) || name === LABS_TAB; }
 const LABS = [
   {key:'glucoseB', label:'Glucose (B)', unit:'mg/dL'},
   {key:'hba1c',    label:'HbA1c',       unit:'%'},
@@ -543,12 +545,12 @@ function fetchViaProxy(url){
 
 // One tab per year (2026, 2027, ...), found automatically so a new year needs no code change.
 async function loadAllTabs(){
-  let years, hasLabs = false;
+  let years, labTabs = [];
   try{
     const list = await (await fetchViaProxy(proxyListUrl())).json();
     const titles = (list.tabs || []).map(t => t.title);
     years = titles.filter(t => /^\d{4}$/.test(t)).sort();
-    hasLabs = titles.includes(LABS_TAB);
+    labTabs = titles.filter(isLabTab);
   } catch(e){
     if(!localStorage.getItem(TOKEN_KEY)) throw e;
     years = [];
@@ -558,8 +560,8 @@ async function loadAllTabs(){
   for(const y of years){
     tabs[y] = await (await fetchViaProxy(proxyUrl(y))).text();
   }
-  // Lab results live in their own "Labs" tab, one row per result (imported from YYMMDD.csv files).
-  if(hasLabs) tabs[LABS_TAB] = await (await fetchViaProxy(proxyUrl(LABS_TAB))).text();
+  // Lab results: one tab per report named YYMMDD (e.g. 260903), or a single "Labs" tab.
+  for(const t of labTabs) tabs[t] = await (await fetchViaProxy(proxyUrl(t))).text();
   return tabs;
 }
 
@@ -617,7 +619,8 @@ function parseTab(csv, tabYear){
 
 function buildState(tabs){
   let rows = [], undated = [];
-  state.labs = tabs[LABS_TAB] ? parseLabsTab(tabs[LABS_TAB]) : null;
+  const labKeys = Object.keys(tabs).filter(isLabTab);
+  state.labs = labKeys.length ? labKeys.flatMap(k => parseLabsTab(tabs[k])).sort((a,b) => a.date - b.date) : null;
   Object.keys(tabs).filter(k => /^\d{4}$/.test(k)).sort().forEach(y => {
     const p = parseTab(tabs[y], y);
     rows = rows.concat(p.rows);
