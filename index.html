@@ -127,6 +127,7 @@
   tr.planned td{color:var(--muted);}
   .adh-grid{display:grid; gap:3px; align-items:center; justify-content:start;}
   .adh-grid .med{font-size:12px; color:var(--ink-2); white-space:nowrap; padding-right:6px;}
+  .has-tip{cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:var(--axis);}
   .adh-grid .med[data-med]{cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:var(--axis);}
   .adh-grid .dn{font-size:9px; color:var(--muted); text-align:center; font-variant-numeric:tabular-nums;}
   /* Checkbox look, like the sheet: green box with a white tick = taken, empty box = not taken. */
@@ -460,7 +461,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790491265";
+const BUILD_ID = "1790491514";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -643,9 +644,9 @@ function renderTiles(){
      sub: last4.length ? `since ${fmtDM(withF[withF.length - last4.length].date)}` + (before4.length ? delta(Math.round(m4) - Math.round(mBefore), '4 before') : '') : ''},
     {lbl:'3-month average', val: m3m != null ? `${fmtNum(m3m,0)} <small>mg/dL</small>` : '—',
      sub: `${a3m.length} reading${a3m.length === 1 ? '' : 's'}`},
-    {lbl:'Ozempic', val: ozNow ? `${fmtNum(ozNow.ozempic,2)} <small>mg</small>` : '—',
+    {lbl:'Ozempic', info:'ozempic', val: ozNow ? `${fmtNum(ozNow.ozempic,2)} <small>mg</small>` : '—',
      sub: ozNext ? `Next: ${fmtDM(ozNext.date)} · ${fmtNum(ozNext.ozempic,2)} mg` : (ozNow ? `Last: ${fmtDM(ozNow.date)}` : '')},
-    {lbl:'HbA1c', val: a1c ? `${fmtNum(a1c.hba1c,1)} <small>%</small>` : '—',
+    {lbl:'HbA1c', info:'hba1c', val: a1c ? `${fmtNum(a1c.hba1c,1)} <small>%</small>` : '—',
      sub: a1c ? (a1c.date ? fmtDMY(a1c.date) : 'Baseline') : ''},
   ];
   document.getElementById('tiles').innerHTML = tiles.map(t =>
@@ -912,11 +913,19 @@ function adherenceGrid(g){
 
 // Tooltip on a medicine's name: its uses and benefits. Hover on a computer, tap on a phone
 // (tap again or anywhere else to close).
+// Tile tooltips in the summary row, same style as the medicine ones.
+const TILE_INFO = {
+  ozempic: {label:'Ozempic', uses:'Type 2 diabetes (semaglutide, a once-weekly injection).',
+    benefits:['Lowers blood sugar and HbA1c', 'Supports weight loss by reducing appetite', 'Lowers the risk of heart attack and stroke in people with heart disease']},
+  hba1c: {label:'HbA1c', usesLabel:'What it shows', benefitsLabel:'Why it matters',
+    uses:'Your average blood sugar over the last 2–3 months.',
+    benefits:['Below 5.7% is the normal range', '5.7–6.4% is the prediabetes range; 6.5% and above is the diabetes range', 'Many people with diabetes aim for below 7% (your doctor sets your target)']},
+};
 function medTipHtml(label){
-  const m = MEDS.find(x => x.key === label.dataset.med);
+  const m = label.dataset.med ? MEDS.find(x => x.key === label.dataset.med) : TILE_INFO[label.dataset.info];
   return `<div style="white-space:normal; max-width:250px"><b>${esc(m.label)}</b>` +
-    `<div style="margin-top:4px"><b>Uses:</b> ${esc(m.uses)}</div>` +
-    `<div style="margin-top:4px"><b>Benefits:</b></div><ul style="margin:2px 0 0; padding-left:18px">` +
+    `<div style="margin-top:4px"><b>${esc(m.usesLabel || 'Uses')}:</b> ${esc(m.uses)}</div>` +
+    `<div style="margin-top:4px"><b>${esc(m.benefitsLabel || 'Benefits')}:</b></div><ul style="margin:2px 0 0; padding-left:18px">` +
     m.benefits.map(b => `<li>${esc(b)}</li>`).join('') + `</ul></div>`;
 }
 let medTipFor = null;
@@ -924,15 +933,15 @@ let medTipFor = null;
 // tooltip and let the tap's own click close it again straight away.
 document.addEventListener('pointerover', e => {
   if(e.pointerType !== 'mouse') return;
-  const label = e.target.closest && e.target.closest('.med[data-med]');
+  const label = e.target.closest && e.target.closest('.med[data-med], [data-info]');
   if(label){ medTipFor = label; showTip(medTipHtml(label), e); }
 });
 document.addEventListener('pointerout', e => {
   if(e.pointerType !== 'mouse') return;
-  if(medTipFor && e.target.closest && e.target.closest('.med[data-med]') === medTipFor && !medTipFor.contains(e.relatedTarget)){ medTipFor = null; hideTip(); }
+  if(medTipFor && e.target.closest && e.target.closest('.med[data-med], [data-info]') === medTipFor && !medTipFor.contains(e.relatedTarget)){ medTipFor = null; hideTip(); }
 });
 document.addEventListener('click', e => {
-  const label = e.target.closest && e.target.closest('.med[data-med]');
+  const label = e.target.closest && e.target.closest('.med[data-med], [data-info]');
   if(label && medTipFor !== label){ medTipFor = label; showTip(medTipHtml(label), e); }
   else if(medTipFor){ medTipFor = null; hideTip(); }
 });
