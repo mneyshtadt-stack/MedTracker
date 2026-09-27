@@ -530,7 +530,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790496946";
+const BUILD_ID = "1790497496";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -607,8 +607,24 @@ async function loadAllTabs(){
   for(const y of years){
     tabs[y] = await (await fetchViaProxy(proxyUrl(y))).text();
   }
-  // Lab results: one tab per report named YYMMDD (e.g. 260903), or a single "Labs" tab.
+  // Lab results: one tab per report named YYMMDD (e.g. 260903), in the separate "Lab results" sheet next
+  // to Med Tracker in Drive (found through the proxy). Report tabs inside Med Tracker itself (older
+  // imports) are read too; when both have the same date, the "Lab results" one wins.
   for(const t of labTabs) tabs[t] = await (await fetchViaProxy(proxyUrl(t))).text();
+  try{
+    const res = await fetch(PROXY_BASE_URL + '/medtracker/lab-report/where', {
+      method: 'POST', cache: 'no-store',
+      headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '')},
+      body: JSON.stringify({sheetId: SHEET_ID}),
+    });
+    const where = res.ok ? await res.json() : {};
+    if(where.labsSheetId){
+      const list = await (await fetchViaProxy(`${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(where.labsSheetId)}&action=list`)).json();
+      for(const t of (list.tabs || []).map(x => x.title).filter(isLabTab)){
+        tabs[t] = await (await fetchViaProxy(`${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(where.labsSheetId)}&sheetName=${encodeURIComponent(t)}`)).text();
+      }
+    }
+  } catch(e){ /* lab file not reachable (or proxy not updated yet): show what we have */ }
   return tabs;
 }
 
