@@ -127,6 +127,7 @@
   tr.planned td{color:var(--muted);}
   .adh-grid{display:grid; gap:3px; align-items:center; justify-content:start;}
   .adh-grid .med{font-size:12px; color:var(--ink-2); white-space:nowrap; padding-right:6px;}
+  .adh-grid .med[data-med]{cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:var(--axis);}
   .adh-grid .dn{font-size:9px; color:var(--muted); text-align:center; font-variant-numeric:tabular-nums;}
   /* Checkbox look, like the sheet: green box with a white tick = taken, empty box = not taken. */
   .cell, .cb{aspect-ratio:1; border-radius:4px; background:transparent;
@@ -459,7 +460,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790426323";
+const BUILD_ID = "1790491265";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -468,10 +469,17 @@ const SNAPSHOT_KEY = 'mt_snapshot';
 const REFRESH_MS = 5 * 60 * 1000;
 const FASTING_NORMAL = [70, 100];
 
+// uses / benefits: general information shown in the Daily medication tooltip (edit freely).
 const MEDS = [
-  {key:'xigduo', label:'Xigduo'},
-  {key:'vitd',   label:'Vit D'},
-  {key:'stator', label:'Stator'},
+  {key:'xigduo', label:'Xigduo',
+   uses:'Type 2 diabetes (dapagliflozin + metformin).',
+   benefits:['Lowers blood sugar and HbA1c', 'Helps protect the heart and kidneys', 'May support modest weight loss']},
+  {key:'vitd', label:'Vit D',
+   uses:'Vitamin D supplement for low vitamin D levels.',
+   benefits:['Helps the body absorb calcium', 'Keeps bones strong', 'Supports muscle and immune function']},
+  {key:'stator', label:'Stator',
+   uses:'High cholesterol (atorvastatin, a statin).',
+   benefits:['Lowers LDL ("bad") cholesterol and triglycerides', 'Reduces the risk of heart attack and stroke']},
 ];
 const LABS = [
   {key:'glucoseB', label:'Glucose (B)', unit:'mg/dL'},
@@ -888,7 +896,7 @@ function adherenceGrid(g){
       chunk.forEach(r => { grid += `<div class="dn">${r.date.getDate()}</div>`; });
       for(let k = chunk.length; k < per; k++) grid += `<div></div>`;
       MEDS.forEach(m => {
-        grid += `<div class="med">${m.label}</div>`;
+        grid += `<div class="med" data-med="${m.key}" data-month="${monthKey(g.yr, g.mo)}" tabindex="0">${m.label}</div>`;
         chunk.forEach(r => {
           const v = r[m.key];
           const cls = r.planned ? 'planned' : v === true ? 'taken' : v === false ? 'missed' : 'blank';
@@ -901,6 +909,33 @@ function adherenceGrid(g){
     });
     return grids.join('<div style="height:10px"></div>');
 }
+
+// Tooltip on a medicine's name: its uses and benefits. Hover on a computer, tap on a phone
+// (tap again or anywhere else to close).
+function medTipHtml(label){
+  const m = MEDS.find(x => x.key === label.dataset.med);
+  return `<div style="white-space:normal; max-width:250px"><b>${esc(m.label)}</b>` +
+    `<div style="margin-top:4px"><b>Uses:</b> ${esc(m.uses)}</div>` +
+    `<div style="margin-top:4px"><b>Benefits:</b></div><ul style="margin:2px 0 0; padding-left:18px">` +
+    m.benefits.map(b => `<li>${esc(b)}</li>`).join('') + `</ul></div>`;
+}
+let medTipFor = null;
+// Hover only for a real mouse: on a phone a tap also fires "over" events, which would open the
+// tooltip and let the tap's own click close it again straight away.
+document.addEventListener('pointerover', e => {
+  if(e.pointerType !== 'mouse') return;
+  const label = e.target.closest && e.target.closest('.med[data-med]');
+  if(label){ medTipFor = label; showTip(medTipHtml(label), e); }
+});
+document.addEventListener('pointerout', e => {
+  if(e.pointerType !== 'mouse') return;
+  if(medTipFor && e.target.closest && e.target.closest('.med[data-med]') === medTipFor && !medTipFor.contains(e.relatedTarget)){ medTipFor = null; hideTip(); }
+});
+document.addEventListener('click', e => {
+  const label = e.target.closest && e.target.closest('.med[data-med]');
+  if(label && medTipFor !== label){ medTipFor = label; showTip(medTipHtml(label), e); }
+  else if(medTipFor){ medTipFor = null; hideTip(); }
+});
 
 // ---------- labs ----------
 function renderLabs(){
