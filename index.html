@@ -161,14 +161,12 @@
   .modal-error{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
   #labFile{font:inherit; font-size:13px; max-width:210px;}
   #labModal .modal-card{max-width:560px; max-height:calc(100vh - 32px); overflow:auto;}
-  .lab-review{max-height:45vh; overflow:auto; margin-bottom:8px;}
-  .lab-review input[type=text]{font:inherit; font-size:13px; width:80px; padding:3px 6px; border-radius:6px; border:1px solid var(--axis); background:var(--page); color:var(--ink); text-align:right;}
-  .lab-review tr.off td{opacity:0.45;}
-  .lab-review th:nth-child(2), .lab-review td:nth-child(2){text-align:left;}
-  details.lab-missing{font-size:12px; margin-top:6px;}
-  details.lab-missing summary{cursor:pointer; color:var(--ink-2);}
-  #labText{width:100%; height:140px; font:12px ui-monospace, Consolas, monospace; margin-top:6px; border:1px solid var(--axis); border-radius:6px; background:var(--page); color:var(--ink);}
   .lab-links{font-size:12px; color:var(--muted); margin:10px 0 0;}
+  .cmd-box{display:flex; align-items:center; gap:8px; background:var(--page); border:1px solid var(--axis); border-radius:8px; padding:8px 10px; margin:4px 0 10px;}
+  .cmd-box code{flex:1; font:14px ui-monospace, Consolas, monospace;}
+  .modal-steps{font-size:13px; margin:0 0 6px; padding-left:20px; line-height:1.6;}
+  #labSync{font-size:12px; color:var(--muted); margin-top:6px; min-height:1em;}
+  #labSync button{margin-left:6px;}
 
   /* Lab results */
   .lab-group{font-size:13px; font-weight:600; color:var(--ink-2); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.04em;}
@@ -479,6 +477,7 @@
       </div>
       <button type="button" id="labUploadBtn" class="ghost-btn">+ Add lab report</button>
     </div>
+    <div id="labSync"></div>
     <div class="scroll-x" id="labs"></div>
   </section>
 </div>
@@ -487,21 +486,25 @@
   <form id="labCard" class="modal-card" autocomplete="off">
     <h3 id="labTitle">Add lab report</h3>
     <div id="labStep1">
-      <div class="modal-hint">Saved to your Google Drive as <b id="labName">YYMMDD.pdf</b> and read by Google's text recognition. You check the values before they go into the sheet.</div>
+      <div class="modal-hint">Saved as <b id="labName">YYMMDD.pdf</b> in <span id="labWhere">your "Laboratory test results" folder</span>, with a copy in Google Drive.</div>
       <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf"></div>
       <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate"></div>
+      <div id="labFolderRow" class="modal-hint" style="display:none">Folder: <b id="labFolderName"></b> · <a href="#" id="labFolderChange">Change</a></div>
     </div>
     <div id="labStep2" style="display:none">
-      <div class="modal-hint" id="labSummary"></div>
-      <div class="lab-review scroll-x"><table class="lab-table"><thead><tr><th></th><th>Test</th><th>Value</th><th>Unit</th><th>Normal</th></tr></thead><tbody id="labRows"></tbody></table></div>
-      <details class="lab-missing" id="labMissingBox"><summary id="labMissingSum"></summary><div id="labMissing" class="modal-hint"></div></details>
-      <details class="lab-missing"><summary>Recognised text</summary><textarea id="labText" readonly></textarea></details>
+      <div class="modal-hint" id="labDone"></div>
+      <div class="cmd-box"><code id="labCmd"></code><button type="button" id="labCopy" class="ghost-btn">Copy</button></div>
+      <ol class="modal-steps">
+        <li>Open <b>Claude</b> in the <b>MedTracker</b> folder (Code tab).</li>
+        <li>Paste the command (<b>Ctrl+V</b>) and press <b>Enter</b>. Claude reads the report and writes <b id="labCsv">YYMMDD.csv</b>.</li>
+        <li>Come back to MedTracker. It adds the new results to the <b>Lab results</b> sheet in Google Drive by itself.</li>
+      </ol>
     </div>
     <div id="labBusy" class="modal-hint" style="display:none"></div>
     <div id="labError" class="modal-error"></div>
     <div class="f-actions">
       <button type="button" id="labCancel">Cancel</button>
-      <button type="submit" class="primary" id="labSave">Upload &amp; read</button>
+      <button type="submit" class="primary" id="labSave">Save</button>
     </div>
   </form>
 </div>
@@ -530,7 +533,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790497496";
+const BUILD_ID = "1790512001";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -618,9 +621,11 @@ async function loadAllTabs(){
       body: JSON.stringify({sheetId: SHEET_ID}),
     });
     const where = res.ok ? await res.json() : {};
+    state.labsSheetTabs = [];
     if(where.labsSheetId){
       const list = await (await fetchViaProxy(`${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(where.labsSheetId)}&action=list`)).json();
-      for(const t of (list.tabs || []).map(x => x.title).filter(isLabTab)){
+      state.labsSheetTabs = (list.tabs || []).map(x => x.title).filter(isLabTab);
+      for(const t of state.labsSheetTabs){
         tabs[t] = await (await fetchViaProxy(`${PROXY_BASE_URL}/?sheetId=${encodeURIComponent(where.labsSheetId)}&sheetName=${encodeURIComponent(t)}`)).text();
       }
     }
@@ -1232,6 +1237,8 @@ async function refresh(){
     renderAll();
     try{ localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt: Date.now(), tabs})); } catch(e){}
     setStatus('Updated ' + d3.timeFormat('%H:%M')(new Date()));
+    // New or changed YYMMDD.csv files in the lab folder (written by Claude) go to the Lab results sheet.
+    if(state.labsSheetTabs) setTimeout(() => syncLabFolder(false), 0);
   } catch(e){
     setStatus(e.message || 'Could not load data', true);
   } finally {
@@ -1334,142 +1341,46 @@ fx('entryCard').addEventListener('submit', saveEntry);
 entryModal.addEventListener('click', e => { if(e.target === entryModal) closeEntry(); });
 
 // ---------- add lab report ----------
-// Upload -> Google Drive (My Drive, folder "MedTracker - Lab reports", as YYMMDD.pdf) -> Google OCR ->
-// the values below are picked out of the recognised text -> you review them -> the proxy writes the
-// YYMMDD tab (with a link to the PDF). The proxy does the Drive and Sheets work; this page only
-// matches text to the known tests.
-
-// Known tests: name regex, unit regex (the value sits next to its unit), and the details written to
-// the sheet. Names match earlier reports so trends connect; ranges are the lab's own.
-const U = {
-  mgdl: 'mg\\s*/\\s*d[lL]', pct: '%', ul: '[uU]\\s*/\\s*[lL]', gdl: '(?<![mc])g\\s*/\\s*d[lL]', mcg: '(?:mic|mc|µ)g\\s*/\\s*d[lL]',
-  ngml: 'ng\\s*/\\s*m[lL]', pgml: 'pg\\s*/\\s*m[lL]', pgcell: 'pg\\s*/\\s*cell', mmol: 'mmol\\s*/\\s*[lL]', fl: '\\bf[lL]\\b',
-  k3: '10\\s*[*x×^]\\s*3\\s*/\\s*mi?cr?o?l', k6: '10\\s*[*x×^]\\s*6\\s*/\\s*mi?cr?o?l', pmol: 'pmol\\s*/\\s*[lL]', miu: 'm[IlL1][uU]\\s*/\\s*[lL]',
-  egfr: 'ml\\s*/\\s*min(?:\\s*/\\s*1[.,]73\\s*m?\\s*[²2]?)?', acr: 'mg\\s*/\\s*g', iuml: 'IU\\s*/\\s*m[lL]', none: '',
-};
-const LAB_TESTS = [
-  ['Diabetes','HbA1c',/HbA1[cC]/,'pct','%',4,5.6,'5.7-6.4% increased risk; 6.5% and above diabetes'],
-  ['Diabetes','Glucose',/Glucose\s*\(\s*B\s*\)/,'mgdl','mg/dl',70,100,'Fasting'],
-  ['Diabetes','C-peptide',/(?<!for\s)C\s*-?\s*Peptide/i,'pmol','pmol/L',298,2350,'Multiply by 0.003 for ng/ml'],
-  ['Diabetes','Islet cell antibodies',/Islet\s*Cell/i,'iuml','IU/ml',null,4,'Negative (GAD65 and IA2 antibodies)'],
-  ['Cholesterol','LDL cholesterol',/(?<![A-Za-z])LDL\s*-?\s*Cholesterol/,'mgdl','mg/dl',null,70,'Target below 70 for diabetes (general below 130)'],
-  ['Cholesterol','Non-HDL cholesterol',/Non\s*-?\s*HDL/i,'mgdl','mg/dl',null,100,'Target below 100 for diabetes (general below 160)'],
-  ['Cholesterol','Triglycerides',/Triglycerides/i,'mgdl','mg/dl',null,150,''],
-  ['Cholesterol','HDL cholesterol',/(?<!Non\s*-?\s*)(?<![A-Za-z])HDL\s*-?\s*Cholesterol/,'mgdl','mg/dl',40,null,'Recommended above 40'],
-  ['Cholesterol','Total cholesterol',/^\s*Cholesterol\b/i,'mgdl','mg/dl',null,200,''],
-  ['Liver','ALT (GPT)',/\bALT\b/,'ul','U/l',0,37,''],
-  ['Liver','AST (GOT)',/\bAST\b/,'ul','U/l',10,37,''],
-  ['Liver','Alkaline phosphatase',/ALKP|Alkaline/i,'ul','U/l',30,120,''],
-  ['Liver','Albumin',/Albumin\s*\(\s*B\s*\)/,'gdl','g/dl',3.5,5.2,''],
-  ['Liver','Total protein',/Protein\s*Total/i,'gdl','g/dl',6.6,8.3,''],
-  ['Liver','Bilirubin',/Bilirubin\s*Total/i,'mgdl','mg/dl',0.3,1.2,''],
-  ['Kidneys','eGFR',/eGFR/,'egfr','ml/min/1.73m²',60,null,'Desired above 60 (CKD-EPI 2021)'],
-  ['Kidneys','Creatinine',/Creatinine\s*\(\s*B\s*\)/,'mgdl','mg/dl',0.7,1.3,''],
-  ['Kidneys','Urea',/Urea/,'mgdl','mg/dl',19,49,''],
-  ['Kidneys','Albumin/creatinine ratio',/Albumin\s*\/\s*creatinine/i,'acr','mg/g creat.',0,30,'Urine. 30-300 microalbuminuria'],
-  ['Vitamins & iron','Vitamin D',/Vitamin\s*D(?:\s*25\s*\(?\s*OH\s*\)?)?/i,'ngml','ng/ml',20,50,'10-19 mild to moderate deficiency; 30-50 optimum'],
-  ['Vitamins & iron','Ferritin',/Ferritin/i,'ngml','ng/ml',10.5,307.3,''],
-  ['Vitamins & iron','Vitamin B12',/Vitamin\s*B\s*12/i,'pgml','pg/ml',211,911,''],
-  ['Vitamins & iron','Iron',/Fe\s*-\s*Iron|\bIron\b/i,'mcg','mcg/dl',65,175,''],
-  ['Vitamins & iron','Folic acid',/Folic/i,'ngml','ng/ml',5.4,null,'3.4-5.4 borderline'],
-  ['Hormones & other','TSH',/\bTSH\b/,'miu','mIU/l',0.5,5,''],
-  ['Hormones & other','Lp(a)',/\bLPa\b|Lipoprotein\s*\(?a/i,'none','',null,null,''],
-  ['Electrolytes & minerals','Potassium',/Potassium/i,'mmol','mmol/l',3.5,5.1,''],
-  ['Electrolytes & minerals','Sodium',/Sodium/i,'mmol','mmol/l',136,146,''],
-  ['Electrolytes & minerals','Calcium',/Calcium/i,'mgdl','mg/dl',8.7,10.4,''],
-  ['Electrolytes & minerals','Phosphorus',/Phosphor(?:e|us)\b|\bPO4\b/i,'mgdl','mg/dl',2.4,5.1,''],
-  ['Electrolytes & minerals','Magnesium',/Magnesium/i,'mgdl','mg/dl',1.6,2.6,''],
-  ['Blood count','WBC',/WBC/,'k3','10^3/µl',4.5,11,''],
-  ['Blood count','RBC',/RBC/,'k6','10^6/µl',4.5,5.5,''],
-  ['Blood count','Hemoglobin',/(?<!Cell\s*)(?<!Mean\s*)Hemoglobin/i,'gdl','g/dl',13.5,18,''],
-  ['Blood count','Hematocrit',/Hematocrit/i,'pct','%',41,53,''],
-  ['Blood count','MCV',/MCV/,'fl','fl',79,97,''],
-  ['Blood count','MCH',/MCH(?!C)/,'pgcell','pg',27,35,''],
-  ['Blood count','MCHC',/MCHC/,'gdl','g/dl',32,36,''],
-  ['Blood count','RDW',/RDW/,'pct','%',11.6,15,''],
-  ['Blood count','Platelets',/Platelets/i,'k3','10^3/µl',150,450,''],
-  ['Blood count','MPV',/MPV/,'fl','fl',8.5,12.9,''],
-  ['Blood count','Neutrophils %',/Neutrophils\s*%/i,'pct','%',40,75,''],
-  ['Blood count','Lymphocytes %',/Lymphocytes\s*%/i,'pct','%',22,43,''],
-  ['Blood count','Monocytes %',/Monocytes\s*%/i,'pct','%',3,13,''],
-  ['Blood count','Eosinophils %',/Eosinophils\s*%/i,'pct','%',0,6,''],
-  ['Blood count','Basophils %',/Basophils\s*%/i,'pct','%',0,2,''],
-  ['Blood count','Neutrophils #',/Neutrophils\s*#/i,'k3','10^3/µl',1.8,7.7,''],
-  ['Blood count','Lymphocytes #',/Lymphocytes\s*#/i,'k3','10^3/µl',1,4.8,''],
-  ['Blood count','Monocytes #',/Monocytes\s*#/i,'k3','10^3/µl',0,1.1,''],
-  ['Blood count','Eosinophils #',/Eosinophils\s*#/i,'k3','10^3/µl',0,0.6,''],
-  ['Blood count','Basophils #',/Basophils\s*#/i,'k3','10^3/µl',0,0.2,''],
-  ['Urine','Glucose (urine)',/Glucose\s*\(\s*U\s*\)/,'mgdl','mg/dl',null,null,''],
-  ['Urine','Ketones (urine)',/Ketone/i,'mgdl','mg/dl',null,null,''],
-  ['Urine','pH (urine)',/\bPH\s*\(\s*U\s*\)/i,'none','',5,8,''],
-  ['Urine','Protein (urine)',/Protein\s*\(\s*U\s*\)/i,'text','',null,null,''],
-  ['Urine','Nitrite (urine)',/Nitrit/i,'text','',null,null,''],
-  ['Urine','Leucocytes (urine)',/Leucocytes\s*\(\s*U\s*\)/i,'text','',null,null,''],
-  ['Urine','Erythrocytes (urine)',/Erythrocytes\s*\(\s*U\s*\)/i,'text','',null,null,''],
-  ['Urine','Bilirubin (urine)',/Bilirubin\s*\(\s*U\s*\)/i,'text','',null,null,''],
-  ['Urine','Urobilinogen (urine)',/Urobilinogen/i,'text','',null,null,''],
-].map(([group, test, re, u, unit, low, high, note]) => ({group, test, re, u, unit, low, high, note}));
-
-const NUM = '([<>]\\s*)?(\\d+(?:[.,]\\d+)?)';
-function findValue(t, text){
-  if(t.u === 'text'){ const m = /\b(NEGATIVE|POSITIVE|NORMAL|TRACE)\b/i.exec(text); return m ? m[1].toUpperCase() : null; }
-  const tidy = (m, op, n) => (op ? op.trim() : '') + n.replace(',', '.');
-  // The normal range is printed as "70 .......... 100"; drop it so its numbers can't pass for the result.
-  text = text.replace(/\d+(?:[.,]\d+)?\s*[.·…_\-]{3,}\s*\d+(?:[.,]\d+)?/g, ' ');
-  if(t.u === 'none'){ const m = new RegExp(NUM).exec(text); return m ? tidy(m, m[1], m[2]) : null; }
-  const cands = [];
-  for(const re of [new RegExp(NUM + '\\s*(?:' + U[t.u] + ')', 'g'),       // "98 mg/dl"
-                   new RegExp('(?:' + U[t.u] + ')\\s*' + NUM, 'g')]){     // "mg/dl 98" (right-to-left layout)
-    let m; while((m = re.exec(text))) cands.push(tidy(m, m[1], m[2]));
-  }
-  // If a range survived (OCR dropped the dots), prefer a number that isn't one of the range limits.
-  const notLimit = cands.find(v => +v.replace(/[<>]/, '') !== t.low && +v.replace(/[<>]/, '') !== t.high);
-  if(cands.length) return notLimit || cands[0];
-  let m;
-  // "<4" / ">10" results are printed without a unit next to them
-  m = /([<>])\s*(\d+(?:[.,]\d+)?)/.exec(text);
-  return m ? m[1] + m[2].replace(',', '.') : null;
-}
-// For each known test: find the line with its name, then look for the value on that line and the
-// lines around it (OCR may put a table row's cells on neighbouring lines).
-function extractLabs(ocrText){
-  const lines = ocrText.replace(/\r/g, '').split('\n').map(s => s.replace(/[ \t ]+/g, ' ').trim()).filter(Boolean);
-  const found = [], missing = [];
-  const isName = l => LAB_TESTS.some(o => o.re.test(l));
-  const hits = LAB_TESTS.map(t => ({t, i: lines.findIndex(l => t.re.test(l))})).filter(h => h.i >= 0);
-  // When the value isn't on the name's own line, OCR has put it either on the line before (a
-  // right-to-left page read as "range unit value" then "name") or after. Decide once per report by
-  // which side more often holds a value in the test's own unit.
-  const unitOn = (t, j) => j >= 0 && j < lines.length && !isName(lines[j]) && U[t.u] && new RegExp(U[t.u]).test(lines[j]);
-  const before = hits.filter(h => unitOn(h.t, h.i - 1)).length, after = hits.filter(h => unitOn(h.t, h.i + 1)).length;
-  const order = before > after ? [0, -1, 1, -2, 2] : [0, 1, -1, 2, 3];
-  hits.forEach(({t, i}) => {
-    let value = null;
-    for(const j of order.map(d => i + d)){
-      if(j < 0 || j >= lines.length) continue;
-      const txt = j === i ? lines[j].replace(t.re, ' ') : lines[j];
-      if(j !== i && LAB_TESTS.some(o => o !== t && o.re.test(txt))) continue;   // another test's line
-      value = findValue(t, txt);
-      if(value != null) break;
-    }
-    if(value == null){ missing.push(t.test); return; }
-    found.push(Object.assign({}, t, {value}));
-  });
-  LAB_TESTS.forEach(t => { if(!hits.some(h => h.t === t)) missing.push(t.test); });
-  found.sort((a, b) => LAB_TESTS.indexOf(a) - LAB_TESTS.indexOf(b));
-  return {found, missing};
-}
-
+// 1. Save: the PDF goes into the "Laboratory test results" folder on this PC as YYMMDD.pdf (Chrome/Edge
+//    folder access, picked once and kept in IndexedDB), plus a copy in Google Drive next to Med Tracker
+//    (for the link in the sheet). On a phone it's downloaded instead.
+// 2. Claude, started by hand with "/add-lab-report YYMMDD" in the MedTracker folder, reads the PDF and
+//    writes YYMMDD.csv next to it (and rebuilds Lab results.xlsx).
+// 3. Sync: whenever MedTracker refreshes on this PC, any YYMMDD.csv in that folder that is new or changed
+//    is written as tab YYMMDD of the "Lab results" Google Sheet in Drive (via the proxy).
 const labModal = fx('labModal');
-let labRead = null;   // {tab, pdfLink, date, found}
-function labFileName(){
+const canPickFolder = 'showDirectoryPicker' in window;
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('medtracker', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvGet(k){ try{ const db = await idb(); return await new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); } catch(e){ return null; } }
+async function kvSet(k, v){ try{ const db = await idb(); await new Promise(res => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch(e){} }
+async function pickLabFolder(){
+  const h = await window.showDirectoryPicker({ id: 'medtracker-labs', mode: 'readwrite', startIn: 'documents' });
+  await kvSet('labFolder', h);
+  return h;
+}
+function labTabName(){
   const d = fx('labDate').value;   // yyyy-mm-dd
-  return d ? d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10) + '.pdf' : 'YYMMDD.pdf';
+  return d ? d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10) : 'YYMMDD';
+}
+async function showLabFolder(){
+  const h = canPickFolder ? await kvGet('labFolder') : null;
+  fx('labFolderRow').style.display = h ? 'block' : 'none';
+  if(h) fx('labFolderName').textContent = h.name;
+  fx('labWhere').textContent = !canPickFolder ? 'Downloads (move it to the "Laboratory test results" folder)'
+    : h ? `"${h.name}"` : 'your "Laboratory test results" folder (you pick it the first time)';
 }
 function labStep(n){
   fx('labStep1').style.display = n === 1 ? '' : 'none';
   fx('labStep2').style.display = n === 2 ? '' : 'none';
-  fx('labSave').textContent = n === 1 ? 'Upload & read' : 'Save to sheet';
+  fx('labSave').style.display = n === 1 ? '' : 'none';
+  fx('labCancel').textContent = n === 1 ? 'Cancel' : 'Close';
 }
 function labBusy(text){
   fx('labBusy').style.display = text ? 'block' : 'none';
@@ -1479,8 +1390,8 @@ function labBusy(text){
 function openLabModal(){
   fx('labCard').reset();
   fx('labError').textContent = '';
-  fx('labName').textContent = labFileName();
-  labRead = null; labBusy(''); labStep(1);
+  fx('labName').textContent = labTabName() + '.pdf';
+  labBusy(''); labStep(1); showLabFolder();
   labModal.classList.add('open');
 }
 function closeLabModal(){ labModal.classList.remove('open'); }
@@ -1489,12 +1400,19 @@ fx('labFile').addEventListener('change', () => {
   // A file already named like 260903.pdf pre-fills the date; otherwise you enter it.
   const m = f && /^(\d{2})(\d{2})(\d{2})/.exec(f.name);
   if(m) fx('labDate').value = `20${m[1]}-${m[2]}-${m[3]}`;
-  fx('labName').textContent = labFileName();
+  fx('labName').textContent = labTabName() + '.pdf';
 });
-fx('labDate').addEventListener('input', () => { fx('labName').textContent = labFileName(); });
+fx('labDate').addEventListener('input', () => { fx('labName').textContent = labTabName() + '.pdf'; });
+fx('labFolderChange').addEventListener('click', async e => {
+  e.preventDefault();
+  try{ await pickLabFolder(); showLabFolder(); } catch(err){ if(err.name !== 'AbortError') fx('labError').textContent = err.message; }
+});
 fx('labCancel').addEventListener('click', closeLabModal);
 labModal.addEventListener('click', e => { if(e.target === labModal && !fx('labSave').disabled) closeLabModal(); });
 fx('labUploadBtn').addEventListener('click', openLabModal);
+fx('labCopy').addEventListener('click', async () => {
+  try{ await navigator.clipboard.writeText(fx('labCmd').textContent); fx('labCopy').textContent = 'Copied'; } catch(e){ fx('labCopy').textContent = 'Select & copy'; }
+});
 
 function fileToBase64(file){
   return new Promise((res, rej) => {
@@ -1512,70 +1430,107 @@ async function labPost(path, body){
   });
   let j = {}; try{ j = await res.json(); } catch(e){}
   if(res.status === 401) throw new Error('Session expired — sign out and sign in again.');
-  if(res.status === 404 || /missing sheetid/i.test(j.error || '')) throw new Error('Lab report upload isn\'t set up on the proxy yet.');
   if(!res.ok){ const e = new Error(j.error || ('Error ' + res.status)); e.status = res.status; throw e; }
   return j;
 }
-
-function showLabReview(){
-  const {found, missing} = extractLabs(labRead.text);
-  labRead.found = found;
-  fx('labSummary').innerHTML = `<b>${labRead.tab}</b> · ${fmtDMY(new Date(labRead.date + 'T00:00'))} · ${found.length} test${found.length === 1 ? '' : 's'} recognised. ` +
-    `Check every value against the report${labRead.pdfLink ? ` (<a href="${esc(labRead.pdfLink)}" target="_blank" rel="noopener">open PDF</a>)` : ''}, correct any that are wrong, and untick rows you don't want.`;
-  fx('labRows').innerHTML = found.map((t, i) => `<tr data-i="${i}"><td><input type="checkbox" checked></td><td>${esc(t.test)}</td>` +
-    `<td><input type="text" value="${esc(t.value)}"></td><td class="muted">${esc(t.unit)}</td><td class="muted">${labRange(t)}</td></tr>`).join('');
-  fx('labRows').querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => cb.closest('tr').classList.toggle('off', !cb.checked)));
-  fx('labMissingBox').style.display = missing.length ? '' : 'none';
-  fx('labMissingSum').textContent = `Not found in this report (${missing.length})`;
-  fx('labMissing').textContent = missing.join(', ');
-  fx('labText').value = labRead.text;
-  labStep(2);
-}
-
-async function saveLabRows(replace){
-  const rows = [...fx('labRows').querySelectorAll('tr')].filter(tr => tr.querySelector('input[type=checkbox]').checked).map(tr => {
-    const t = labRead.found[+tr.dataset.i];
-    const v = tr.querySelector('input[type=text]').value.trim();
-    return [labRead.date, t.group, t.test, v, t.unit, t.low == null ? '' : t.low, t.high == null ? '' : t.high, t.note];
-  }).filter(r => r[3] !== '');
-  if(!rows.length) throw new Error('No rows to save.');
-  return labPost('/medtracker/lab-report/save', {sheetId: SHEET_ID, tab: labRead.tab, rows, pdfLink: labRead.pdfLink, replace: !!replace});
+async function folderWithPermission(interactive){
+  if(!canPickFolder) return null;
+  let dir = await kvGet('labFolder');
+  if(!dir){ if(!interactive) return null; dir = await pickLabFolder(); }
+  if(await dir.queryPermission({ mode: 'readwrite' }) === 'granted') return dir;
+  if(interactive && await dir.requestPermission({ mode: 'readwrite' }) === 'granted') return dir;
+  return null;
 }
 
 fx('labCard').addEventListener('submit', async e => {
   e.preventDefault();
   fx('labError').textContent = '';
+  const file = fx('labFile').files[0], date = fx('labDate').value, tab = labTabName(), name = tab + '.pdf';
+  if(!file || !date){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
   try{
-    if(!labRead){
-      const file = fx('labFile').files[0], date = fx('labDate').value;
-      if(!file || !date){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
-      if(!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf'){ fx('labError').textContent = 'Choose a PDF file.'; return; }
-      labBusy('Uploading to Google Drive and reading the report… (up to a minute)');
+    let where;
+    if(canPickFolder){
+      const dir = await folderWithPermission(true);
+      if(!dir) throw new Error('No permission to write to the folder.');
+      let exists = false;
+      try{ await dir.getFileHandle(name); exists = true; } catch(_){}
+      if(exists && !confirm(`${name} already exists in "${dir.name}". Replace it?`)) return;
+      labBusy('Saving…');
+      const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await w.write(file);
+      await w.close();
+      where = `"${dir.name}"`;
+    } else {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      where = 'Downloads — move it to the "Laboratory test results" folder';
+    }
+    // Copy in Google Drive, next to Med Tracker; its link goes into the sheet tab at sync time.
+    labBusy('Copying to Google Drive…');
+    let drive = '';
+    try{
       const r = await labPost('/medtracker/lab-report/read', {sheetId: SHEET_ID, date, pdfBase64: await fileToBase64(file)});
-      labRead = {tab: r.tab, pdfLink: r.pdfLink, text: r.text || '', date};
-      labBusy('');
-      showLabReview();
-      return;
-    }
-    labBusy('Saving to the sheet…');
-    let r;
-    try{ r = await saveLabRows(false); }
-    catch(err){
-      if(err.status !== 409) throw err;
-      labBusy('');
-      if(!confirm(`Tab ${labRead.tab} already exists in the sheet. Replace it with these values?`)) return;
-      labBusy('Saving to the sheet…');
-      r = await saveLabRows(true);
-    }
+      if(r.pdfLink){ await kvSet('pdfLink:' + tab, r.pdfLink); drive = ' and copied to Google Drive'; }
+    } catch(err){ drive = ` (not copied to Google Drive: ${err.message})`; }
     labBusy('');
-    closeLabModal();
-    setStatus(`Saved ${r.rows} results to tab ${r.tab}`);
-    refresh();
+    fx('labDone').innerHTML = `Saved <b>${esc(name)}</b> in ${esc(where)}${esc(drive)}. Next:`;
+    fx('labCmd').textContent = '/add-lab-report ' + tab;
+    fx('labCsv').textContent = tab + '.csv';
+    fx('labCopy').textContent = 'Copy';
+    try{ await navigator.clipboard.writeText('/add-lab-report ' + tab); fx('labCopy').textContent = 'Copied'; } catch(e){}
+    labStep(2);
   } catch(err){
     labBusy('');
-    fx('labError').textContent = err.message;
+    if(err.name === 'AbortError') return;   // folder picker cancelled
+    fx('labError').textContent = 'Could not save: ' + err.message;
   }
 });
+
+// ---- sync YYMMDD.csv files from the folder to the "Lab results" Google Sheet ----
+let labSyncing = false;
+function setLabSync(html){ fx('labSync').innerHTML = html || ''; }
+async function syncLabFolder(interactive){
+  if(labSyncing || !canPickFolder) return;
+  labSyncing = true;
+  try{
+    const dir = await folderWithPermission(interactive);
+    if(!dir){
+      // Folder access lapses when the browser restarts; one click restores it.
+      if(await kvGet('labFolder')) setLabSync(`Lab report folder: <button type="button" class="ghost-btn" id="labSyncBtn">Check for new results</button>`);
+      const b = fx('labSyncBtn'); if(b) b.addEventListener('click', () => syncLabFolder(true));
+      return;
+    }
+    const done = [];
+    for await (const [fname, handle] of dir.entries()){
+      const m = /^(\d{6})\.csv$/i.exec(fname);
+      if(!m || handle.kind !== 'file') continue;
+      const tab = m[1], f = await handle.getFile();
+      const syncedAt = await kvGet('synced:' + tab);
+      const inSheet = (state.labsSheetTabs || []).includes(tab);
+      if(inSheet && syncedAt && syncedAt >= f.lastModified) continue;   // already there and unchanged
+      if(inSheet && !syncedAt) { await kvSet('synced:' + tab, f.lastModified); continue; }   // saved before this device synced
+      const rows = Papa.parse((await f.text()).trim(), {skipEmptyLines: true}).data
+        .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]).trim()) && String(r[2] || '').trim())
+        .map(r => [0,1,2,3,4,5,6,7].map(i => String(r[i] == null ? '' : r[i]).trim()));
+      if(!rows.length) continue;
+      setLabSync(`Adding ${tab} to the Lab results sheet…`);
+      const body = {sheetId: SHEET_ID, tab, rows, pdfLink: (await kvGet('pdfLink:' + tab)) || '', replace: inSheet};
+      try{ await labPost('/medtracker/lab-report/save', body); }
+      catch(err){ if(err.status !== 409) throw err; await labPost('/medtracker/lab-report/save', Object.assign(body, {replace: true})); }
+      await kvSet('synced:' + tab, f.lastModified);
+      if(!inSheet) (state.labsSheetTabs = state.labsSheetTabs || []).push(tab);
+      done.push(tab);
+    }
+    setLabSync(done.length ? `Added ${done.join(', ')} to the Lab results sheet.` : '');
+    if(done.length) setTimeout(refresh, 500);
+  } catch(err){
+    setLabSync('Lab results sync: ' + esc(err.message));
+  } finally {
+    labSyncing = false;
+  }
+}
 
 
 // Wired first, so a later failure can never leave the button dead.
