@@ -540,7 +540,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790512872";
+const BUILD_ID = "1790513854";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1193,11 +1193,8 @@ function renderLabs(){
     html += `<details class="lab-panel"><summary><b>${esc(grp)}</b> <span class="muted">· ${latest.length} tests on ${fmtDM(latestDate)}</span> ${line}</summary>${table}</details>`;
   });
 
-  // One entry per report date, newest first, linking to the PDF in Drive when there is one.
-  const reports = [...new Set(state.labs.map(x => +x.date))].sort((a,b) => b - a).map(d => {
-    const withLink = state.labs.find(x => +x.date === d && x.link);
-    return withLink ? `<a href="${esc(withLink.link)}" target="_blank" rel="noopener">${fmtDMY(new Date(d))} (PDF)</a>` : fmtDMY(new Date(d));
-  });
+  // One entry per report date, newest first (the PDFs themselves stay in the folder on the PC).
+  const reports = [...new Set(state.labs.map(x => +x.date))].sort((a,b) => b - a).map(d => fmtDMY(new Date(d)));
   if(onlyOut && !/lab-card|<tr|lab-panel/.test(html)) html = `<div class="empty-note"><span class="chip ok">✓ All in range</span> Every latest result is within its normal range.</div>`;
   html += `<div class="lab-links">Reports: ${reports.join(' · ')}</div>`;
 
@@ -1535,8 +1532,10 @@ async function syncLabFolder(interactive){
     const done = [];
     let book;
     try{ book = await (await dir.getFileHandle(LAB_BOOK)).getFile(); } catch(_){ setLabSync(''); return; }   // no workbook yet
+    // Tabs saved while PDFs were still copied to Drive carry a now-dead PDF link (J2): rewrite those once.
+    const staleLink = new Set((state.labs || []).filter(x => x.link).map(x => toIsoDate(x.date).replace(/-/g, '').slice(2)));
     const bookSeen = await kvGet('bookModified');
-    if(bookSeen && bookSeen === book.lastModified){ setLabSync(''); return; }   // unchanged since the last check
+    if(bookSeen && bookSeen === book.lastModified && !staleLink.size){ setLabSync(''); return; }   // unchanged since the last check
     const X = await loadXlsx();
     const wb = X.read(await book.arrayBuffer(), {type: 'array', cellDates: false});
     for(const tab of wb.SheetNames.filter(n => /^\d{6}$/.test(n))){
@@ -1544,8 +1543,9 @@ async function syncLabFolder(interactive){
       if(!rows.length) continue;
       const hash = hashText(JSON.stringify(rows)), seen = await kvGet('tabHash:' + tab);
       const inSheet = (state.labsSheetTabs || []).includes(tab);
-      if(inSheet && seen === hash) continue;                                         // already there, unchanged
-      if(inSheet && !seen){ await kvSet('tabHash:' + tab, hash); continue; }         // synced before this device
+      const stale = staleLink.has(tab);
+      if(inSheet && seen === hash && !stale) continue;                               // already there, unchanged
+      if(inSheet && !seen && !stale){ await kvSet('tabHash:' + tab, hash); continue; }   // synced before this device
       setLabSync(`Adding ${tab} to the Lab results sheet…`);
       const body = {sheetId: SHEET_ID, tab, rows, replace: inSheet};
       try{ await labPost('/medtracker/lab-report/save', body); }
