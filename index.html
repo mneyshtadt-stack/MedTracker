@@ -162,6 +162,7 @@
   #labFile{font:inherit; font-size:13px; max-width:210px;}
   #labModal .modal-card{max-width:560px; max-height:calc(100vh - 32px); overflow:auto;}
   .lab-links{font-size:12px; color:var(--muted); margin:10px 0 0;}
+  .lab-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
   .cmd-box{display:flex; align-items:center; gap:8px; background:var(--page); border:1px solid var(--axis); border-radius:8px; padding:8px 10px; margin:4px 0 10px;}
   .cmd-box code{flex:1; font:14px ui-monospace, Consolas, monospace;}
   .modal-steps{font-size:13px; margin:0 0 6px; padding-left:20px; line-height:1.6;}
@@ -475,7 +476,13 @@
         <h2>Lab results</h2>
         <div class="card-sub">Latest result, change since the previous test, and the normal range or target from the lab report</div>
       </div>
-      <button type="button" id="labUploadBtn" class="ghost-btn">+ Add lab report</button>
+      <div class="lab-actions">
+        <div class="ranges" id="labFilter" role="group" aria-label="Show">
+          <button type="button" data-f="all">All</button>
+          <button type="button" data-f="out">Out of range</button>
+        </div>
+        <button type="button" id="labUploadBtn" class="ghost-btn">+ Add lab report</button>
+      </div>
     </div>
     <div id="labSync"></div>
     <div class="scroll-x" id="labs"></div>
@@ -533,7 +540,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790512788";
+const BUILD_ID = "1790512872";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1126,11 +1133,16 @@ function renderLabs(){
   const el = document.getElementById('labs');
   const byTest = d3.group(state.labs, x => x.test);
   const used = new Set();
+  // "Out of range" filter: only tests whose latest result is High or Low.
+  const onlyOut = labFilterValue() === 'out';
+  const isOff = x => { const s = labStatus(x); return s === 'high' || s === 'low'; };
+  const latestOf = t => byTest.get(t)[byTest.get(t).length - 1];
+  document.querySelectorAll('#labFilter button').forEach(b => b.classList.toggle('on', b.dataset.f === (onlyOut ? 'out' : 'all')));
 
   // Tier 1: cards
   let html = KEY_LABS.map(g => {
-    const cards = g.tests.filter(t => byTest.has(t)).map(t => {
-      used.add(t);
+    g.tests.forEach(t => { if(byTest.has(t)) used.add(t); });
+    const cards = g.tests.filter(t => byTest.has(t) && (!onlyOut || isOff(latestOf(t)))).map(t => {
       const series = byTest.get(t);
       const latest = series[series.length - 1];
       const prev = series.slice(0, -1).filter(s => s.num != null).pop();
@@ -1151,7 +1163,7 @@ function renderLabs(){
   }).join('');
 
   // Tier 2: other tests, latest value each
-  const others = [...byTest.keys()].filter(t => !used.has(t) && !SUMMARY_GROUPS.includes(byTest.get(t)[0].group));
+  const others = [...byTest.keys()].filter(t => !used.has(t) && !SUMMARY_GROUPS.includes(byTest.get(t)[0].group) && (!onlyOut || isOff(latestOf(t))));
   if(others.length){
     html += `<h3 class="lab-group">Other tests</h3><div class="scroll-x"><table class="lab-table"><thead><tr><th>Test</th><th>Result</th><th>Status</th><th>Normal</th><th>Date</th></tr></thead><tbody>` +
       others.map(t => { const x = byTest.get(t)[byTest.get(t).length - 1];
@@ -1166,13 +1178,15 @@ function renderLabs(){
     if(!tests.length) return;
     const latestDate = new Date(Math.max(...tests.map(t => +byTest.get(t)[byTest.get(t).length - 1].date)));
     const latest = tests.map(t => byTest.get(t)[byTest.get(t).length - 1]).filter(x => +x.date === +latestDate);
-    const off = latest.filter(x => labStatus(x) === 'high' || labStatus(x) === 'low');
+    const off = latest.filter(isOff);
+    if(onlyOut && !off.length) return;
+    const rowsFor = onlyOut ? tests.filter(t => isOff(latestOf(t))) : tests;
     const line = off.length
       ? `<span class="chip high">${off.length} out of range</span> ${off.map(x => `${esc(x.test)} ${labValue(x)} (${labStatus(x)})`).join(', ')}`
       : `<span class="chip ok">✓ All in range</span>`;
     const cols = dates.filter(d => tests.some(t => byTest.get(t).some(x => +x.date === +d)));
     const table = `<div class="scroll-x"><table class="lab-table"><thead><tr><th>Test</th>${cols.map(d => `<th>${fmtDM(d)}</th>`).join('')}<th>Normal</th></tr></thead><tbody>` +
-      tests.map(t => { const s = byTest.get(t);
+      rowsFor.map(t => { const s = byTest.get(t);
         return `<tr><td>${esc(t)}</td>${cols.map(d => { const x = s.find(y => +y.date === +d);
           return `<td class="${x ? 'st-' + (labStatus(x) || 'none') : ''}">${x ? labValue(x) : ''}</td>`; }).join('')}<td class="muted">${labRange(s[s.length - 1])}</td></tr>`; }).join('') +
       `</tbody></table></div>`;
@@ -1184,10 +1198,18 @@ function renderLabs(){
     const withLink = state.labs.find(x => +x.date === d && x.link);
     return withLink ? `<a href="${esc(withLink.link)}" target="_blank" rel="noopener">${fmtDMY(new Date(d))} (PDF)</a>` : fmtDMY(new Date(d));
   });
+  if(onlyOut && !/lab-card|<tr|lab-panel/.test(html)) html = `<div class="empty-note"><span class="chip ok">✓ All in range</span> Every latest result is within its normal range.</div>`;
   html += `<div class="lab-links">Reports: ${reports.join(' · ')}</div>`;
 
   el.innerHTML = html;
 }
+
+// All / Out of range, remembered on this device.
+function labFilterValue(){ try{ return localStorage.getItem('mt_labFilter') === 'out' ? 'out' : 'all'; } catch(e){ return 'all'; } }
+document.querySelectorAll('#labFilter button').forEach(b => b.addEventListener('click', () => {
+  try{ localStorage.setItem('mt_labFilter', b.dataset.f); } catch(e){}
+  renderLabs();
+}));
 
 // Before the Labs tab exists: the four lab columns in the year tab.
 function renderLabsLegacy(){
