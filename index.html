@@ -533,7 +533,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790512501";
+const BUILD_ID = "1790512788";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1473,8 +1473,31 @@ fx('labCard').addEventListener('submit', async e => {
   }
 });
 
-// ---- sync YYMMDD.csv files from the folder to the "Lab results" Google Sheet ----
-let labSyncing = false;
+// ---- sync "Lab results.xlsx" in the folder to the "Lab results" Google Sheet ----
+// The workbook (kept by Claude with tools/lab-results.py) has one tab per report, YYMMDD. Each tab that
+// is new, or whose content changed since this device last synced it, is written to the Google Sheet.
+const LAB_BOOK = 'Lab results.xlsx';
+let labSyncing = false, xlsxLib = null;
+function loadXlsx(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  if(!xlsxLib) xlsxLib = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => res(window.XLSX); s.onerror = () => { xlsxLib = null; rej(new Error('could not load the spreadsheet reader')); };
+    document.head.appendChild(s);
+  });
+  return xlsxLib;
+}
+function hashText(s){ let h = 2166136261; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+// A tab as [[Date(yyyy-mm-dd), Group, Test, Value, Unit, Low, High, Note], ...], header dropped.
+function workbookRows(X, ws){
+  return X.utils.sheet_to_json(ws, {header: 1, raw: true, defval: ''}).map(r => {
+    let d = r[0];
+    if(typeof d === 'number') d = X.SSF.format('yyyy-mm-dd', d);          // real date cell (serial number)
+    else { const p = parseLabDate(d); d = p ? toIsoDate(p) : String(d).trim(); }
+    return [d].concat([1,2,3,4,5,6,7].map(i => String(r[i] == null ? '' : r[i]).trim()));
+  }).filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r[0]) && r[2]);
+}
 function setLabSync(html){ fx('labSync').innerHTML = html || ''; }
 async function syncLabFolder(interactive){
   if(labSyncing || !canPickFolder) return;
@@ -1488,26 +1511,28 @@ async function syncLabFolder(interactive){
       return;
     }
     const done = [];
-    for await (const [fname, handle] of dir.entries()){
-      const m = /^(\d{6})\.csv$/i.exec(fname);
-      if(!m || handle.kind !== 'file') continue;
-      const tab = m[1], f = await handle.getFile();
-      const syncedAt = await kvGet('synced:' + tab);
-      const inSheet = (state.labsSheetTabs || []).includes(tab);
-      if(inSheet && syncedAt && syncedAt >= f.lastModified) continue;   // already there and unchanged
-      if(inSheet && !syncedAt) { await kvSet('synced:' + tab, f.lastModified); continue; }   // saved before this device synced
-      const rows = Papa.parse((await f.text()).trim(), {skipEmptyLines: true}).data
-        .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]).trim()) && String(r[2] || '').trim())
-        .map(r => [0,1,2,3,4,5,6,7].map(i => String(r[i] == null ? '' : r[i]).trim()));
+    let book;
+    try{ book = await (await dir.getFileHandle(LAB_BOOK)).getFile(); } catch(_){ setLabSync(''); return; }   // no workbook yet
+    const bookSeen = await kvGet('bookModified');
+    if(bookSeen && bookSeen === book.lastModified){ setLabSync(''); return; }   // unchanged since the last check
+    const X = await loadXlsx();
+    const wb = X.read(await book.arrayBuffer(), {type: 'array', cellDates: false});
+    for(const tab of wb.SheetNames.filter(n => /^\d{6}$/.test(n))){
+      const rows = workbookRows(X, wb.Sheets[tab]);
       if(!rows.length) continue;
+      const hash = hashText(JSON.stringify(rows)), seen = await kvGet('tabHash:' + tab);
+      const inSheet = (state.labsSheetTabs || []).includes(tab);
+      if(inSheet && seen === hash) continue;                                         // already there, unchanged
+      if(inSheet && !seen){ await kvSet('tabHash:' + tab, hash); continue; }         // synced before this device
       setLabSync(`Adding ${tab} to the Lab results sheet…`);
       const body = {sheetId: SHEET_ID, tab, rows, replace: inSheet};
       try{ await labPost('/medtracker/lab-report/save', body); }
       catch(err){ if(err.status !== 409) throw err; await labPost('/medtracker/lab-report/save', Object.assign(body, {replace: true})); }
-      await kvSet('synced:' + tab, f.lastModified);
+      await kvSet('tabHash:' + tab, hash);
       if(!inSheet) (state.labsSheetTabs = state.labsSheetTabs || []).push(tab);
       done.push(tab);
     }
+    await kvSet('bookModified', book.lastModified);
     setLabSync(done.length ? `Added ${done.join(', ')} to the Lab results sheet.` : '');
     if(done.length) setTimeout(refresh, 500);
   } catch(err){
