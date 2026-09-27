@@ -160,6 +160,15 @@
   .modal-hint{font-size:12px; color:var(--muted); margin-bottom:12px;}
   .modal-error{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
   #labFile{font:inherit; font-size:13px; max-width:210px;}
+  #labModal .modal-card{max-width:560px; max-height:calc(100vh - 32px); overflow:auto;}
+  .lab-review{max-height:45vh; overflow:auto; margin-bottom:8px;}
+  .lab-review input[type=text]{font:inherit; font-size:13px; width:80px; padding:3px 6px; border-radius:6px; border:1px solid var(--axis); background:var(--page); color:var(--ink); text-align:right;}
+  .lab-review tr.off td{opacity:0.45;}
+  .lab-review th:nth-child(2), .lab-review td:nth-child(2){text-align:left;}
+  details.lab-missing{font-size:12px; margin-top:6px;}
+  details.lab-missing summary{cursor:pointer; color:var(--ink-2);}
+  #labText{width:100%; height:140px; font:12px ui-monospace, Consolas, monospace; margin-top:6px; border:1px solid var(--axis); border-radius:6px; background:var(--page); color:var(--ink);}
+  .lab-links{font-size:12px; color:var(--muted); margin:10px 0 0;}
 
   /* Lab results */
   .lab-group{font-size:13px; font-weight:600; color:var(--ink-2); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.04em;}
@@ -477,14 +486,22 @@
 <div id="labModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="labTitle">
   <form id="labCard" class="modal-card" autocomplete="off">
     <h3 id="labTitle">Add lab report</h3>
-    <div class="modal-hint">The PDF is saved as <b id="labName">YYMMDD.pdf</b> <span id="labWhere"></span></div>
-    <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf" required></div>
-    <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate" required></div>
-    <div id="labFolderRow" class="modal-hint" style="display:none">Folder: <b id="labFolderName"></b> · <a href="#" id="labFolderChange">Change</a></div>
+    <div id="labStep1">
+      <div class="modal-hint">Saved to your Google Drive as <b id="labName">YYMMDD.pdf</b> and read by Google's text recognition. You check the values before they go into the sheet.</div>
+      <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf"></div>
+      <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate"></div>
+    </div>
+    <div id="labStep2" style="display:none">
+      <div class="modal-hint" id="labSummary"></div>
+      <div class="lab-review scroll-x"><table class="lab-table"><thead><tr><th></th><th>Test</th><th>Value</th><th>Unit</th><th>Normal</th></tr></thead><tbody id="labRows"></tbody></table></div>
+      <details class="lab-missing" id="labMissingBox"><summary id="labMissingSum"></summary><div id="labMissing" class="modal-hint"></div></details>
+      <details class="lab-missing"><summary>Recognised text</summary><textarea id="labText" readonly></textarea></details>
+    </div>
+    <div id="labBusy" class="modal-hint" style="display:none"></div>
     <div id="labError" class="modal-error"></div>
     <div class="f-actions">
       <button type="button" id="labCancel">Cancel</button>
-      <button type="submit" class="primary" id="labSave">Save</button>
+      <button type="submit" class="primary" id="labSave">Upload &amp; read</button>
     </div>
   </form>
 </div>
@@ -513,7 +530,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790493681";
+const BUILD_ID = "1790496929";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1036,6 +1053,8 @@ function parseLabDate(s){
 function parseLabsTab(csv){
   const grid = Papa.parse(csv.trim(), {skipEmptyLines:true}).data;
   const out = [];
+  // Tabs saved by "Add lab report" carry the Drive link to the report's PDF in J2.
+  const link = /^https:\/\/(drive|docs)\.google\.com\//.test((grid[1] || [])[9] || '') ? grid[1][9] : '';
   grid.forEach(r => {
     const date = parseLabDate(r[0]);
     const test = String(r[2] || '').trim();
@@ -1044,7 +1063,7 @@ function parseLabsTab(csv){
     const num = parseFloat(raw.replace(/[<>,\s]/g, ''));
     out.push({date, group: String(r[1] || '').trim() || 'Other', test, raw,
       num: isNaN(num) ? null : num, op: /^</.test(raw) ? '<' : /^>/.test(raw) ? '>' : '',
-      unit: String(r[4] || '').trim(), low: toNum(r[5]), high: toNum(r[6]), note: String(r[7] || '').trim()});
+      unit: String(r[4] || '').trim(), low: toNum(r[5]), high: toNum(r[6]), note: String(r[7] || '').trim(), link});
   });
   return out.sort((a,b) => a.date - b.date);
 }
@@ -1138,6 +1157,13 @@ function renderLabs(){
       `</tbody></table></div>`;
     html += `<details class="lab-panel"><summary><b>${esc(grp)}</b> <span class="muted">· ${latest.length} tests on ${fmtDM(latestDate)}</span> ${line}</summary>${table}</details>`;
   });
+
+  // One entry per report date, newest first, linking to the PDF in Drive when there is one.
+  const reports = [...new Set(state.labs.map(x => +x.date))].sort((a,b) => b - a).map(d => {
+    const withLink = state.labs.find(x => +x.date === d && x.link);
+    return withLink ? `<a href="${esc(withLink.link)}" target="_blank" rel="noopener">${fmtDMY(new Date(d))} (PDF)</a>` : fmtDMY(new Date(d));
+  });
+  html += `<div class="lab-links">Reports: ${reports.join(' · ')}</div>`;
 
   el.innerHTML = html;
 }
@@ -1292,94 +1318,249 @@ fx('entryCard').addEventListener('submit', saveEntry);
 entryModal.addEventListener('click', e => { if(e.target === entryModal) closeEntry(); });
 
 // ---------- add lab report ----------
-// Saves the chosen PDF as YYMMDD.pdf (the test date). On a computer (Chrome / Edge) it goes straight
-// into a folder picked once -- the "Laboratory test results" folder -- whose handle is kept in this
-// browser's IndexedDB; elsewhere (phones) the renamed file is downloaded instead. The report never
-// leaves the device. Turning it into the YYMMDD tab of the sheet is a separate step (ask Claude).
-const labModal = fx('labModal');
-const canPickFolder = 'showDirectoryPicker' in window;
-function idb(){
-  return new Promise((res, rej) => {
-    const r = indexedDB.open('medtracker', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('kv');
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
+// Upload -> Google Drive (My Drive, folder "MedTracker - Lab reports", as YYMMDD.pdf) -> Google OCR ->
+// the values below are picked out of the recognised text -> you review them -> the proxy writes the
+// YYMMDD tab (with a link to the PDF). The proxy does the Drive and Sheets work; this page only
+// matches text to the known tests.
+
+// Known tests: name regex, unit regex (the value sits next to its unit), and the details written to
+// the sheet. Names match earlier reports so trends connect; ranges are the lab's own.
+const U = {
+  mgdl: 'mg\\s*/\\s*d[lL]', pct: '%', ul: '[uU]\\s*/\\s*[lL]', gdl: '(?<![mc])g\\s*/\\s*d[lL]', mcg: '(?:mic|mc|µ)g\\s*/\\s*d[lL]',
+  ngml: 'ng\\s*/\\s*m[lL]', pgml: 'pg\\s*/\\s*m[lL]', pgcell: 'pg\\s*/\\s*cell', mmol: 'mmol\\s*/\\s*[lL]', fl: '\\bf[lL]\\b',
+  k3: '10\\s*[*x×^]\\s*3\\s*/\\s*mi?cr?o?l', k6: '10\\s*[*x×^]\\s*6\\s*/\\s*mi?cr?o?l', pmol: 'pmol\\s*/\\s*[lL]', miu: 'm[IlL1][uU]\\s*/\\s*[lL]',
+  egfr: 'ml\\s*/\\s*min(?:\\s*/\\s*1[.,]73\\s*m?\\s*[²2]?)?', acr: 'mg\\s*/\\s*g', iuml: 'IU\\s*/\\s*m[lL]', none: '',
+};
+const LAB_TESTS = [
+  ['Diabetes','HbA1c',/HbA1[cC]/,'pct','%',4,5.6,'5.7-6.4% increased risk; 6.5% and above diabetes'],
+  ['Diabetes','Glucose',/Glucose\s*\(\s*B\s*\)/,'mgdl','mg/dl',70,100,'Fasting'],
+  ['Diabetes','C-peptide',/(?<!for\s)C\s*-?\s*Peptide/i,'pmol','pmol/L',298,2350,'Multiply by 0.003 for ng/ml'],
+  ['Diabetes','Islet cell antibodies',/Islet\s*Cell/i,'iuml','IU/ml',null,4,'Negative (GAD65 and IA2 antibodies)'],
+  ['Cholesterol','LDL cholesterol',/(?<![A-Za-z])LDL\s*-?\s*Cholesterol/,'mgdl','mg/dl',null,70,'Target below 70 for diabetes (general below 130)'],
+  ['Cholesterol','Non-HDL cholesterol',/Non\s*-?\s*HDL/i,'mgdl','mg/dl',null,100,'Target below 100 for diabetes (general below 160)'],
+  ['Cholesterol','Triglycerides',/Triglycerides/i,'mgdl','mg/dl',null,150,''],
+  ['Cholesterol','HDL cholesterol',/(?<!Non\s*-?\s*)(?<![A-Za-z])HDL\s*-?\s*Cholesterol/,'mgdl','mg/dl',40,null,'Recommended above 40'],
+  ['Cholesterol','Total cholesterol',/^\s*Cholesterol\b/i,'mgdl','mg/dl',null,200,''],
+  ['Liver','ALT (GPT)',/\bALT\b/,'ul','U/l',0,37,''],
+  ['Liver','AST (GOT)',/\bAST\b/,'ul','U/l',10,37,''],
+  ['Liver','Alkaline phosphatase',/ALKP|Alkaline/i,'ul','U/l',30,120,''],
+  ['Liver','Albumin',/Albumin\s*\(\s*B\s*\)/,'gdl','g/dl',3.5,5.2,''],
+  ['Liver','Total protein',/Protein\s*Total/i,'gdl','g/dl',6.6,8.3,''],
+  ['Liver','Bilirubin',/Bilirubin\s*Total/i,'mgdl','mg/dl',0.3,1.2,''],
+  ['Kidneys','eGFR',/eGFR/,'egfr','ml/min/1.73m²',60,null,'Desired above 60 (CKD-EPI 2021)'],
+  ['Kidneys','Creatinine',/Creatinine\s*\(\s*B\s*\)/,'mgdl','mg/dl',0.7,1.3,''],
+  ['Kidneys','Urea',/Urea/,'mgdl','mg/dl',19,49,''],
+  ['Kidneys','Albumin/creatinine ratio',/Albumin\s*\/\s*creatinine/i,'acr','mg/g creat.',0,30,'Urine. 30-300 microalbuminuria'],
+  ['Vitamins & iron','Vitamin D',/Vitamin\s*D(?:\s*25\s*\(?\s*OH\s*\)?)?/i,'ngml','ng/ml',20,50,'10-19 mild to moderate deficiency; 30-50 optimum'],
+  ['Vitamins & iron','Ferritin',/Ferritin/i,'ngml','ng/ml',10.5,307.3,''],
+  ['Vitamins & iron','Vitamin B12',/Vitamin\s*B\s*12/i,'pgml','pg/ml',211,911,''],
+  ['Vitamins & iron','Iron',/Fe\s*-\s*Iron|\bIron\b/i,'mcg','mcg/dl',65,175,''],
+  ['Vitamins & iron','Folic acid',/Folic/i,'ngml','ng/ml',5.4,null,'3.4-5.4 borderline'],
+  ['Hormones & other','TSH',/\bTSH\b/,'miu','mIU/l',0.5,5,''],
+  ['Hormones & other','Lp(a)',/\bLPa\b|Lipoprotein\s*\(?a/i,'none','',null,null,''],
+  ['Electrolytes & minerals','Potassium',/Potassium/i,'mmol','mmol/l',3.5,5.1,''],
+  ['Electrolytes & minerals','Sodium',/Sodium/i,'mmol','mmol/l',136,146,''],
+  ['Electrolytes & minerals','Calcium',/Calcium/i,'mgdl','mg/dl',8.7,10.4,''],
+  ['Electrolytes & minerals','Phosphorus',/Phosphor(?:e|us)\b|\bPO4\b/i,'mgdl','mg/dl',2.4,5.1,''],
+  ['Electrolytes & minerals','Magnesium',/Magnesium/i,'mgdl','mg/dl',1.6,2.6,''],
+  ['Blood count','WBC',/WBC/,'k3','10^3/µl',4.5,11,''],
+  ['Blood count','RBC',/RBC/,'k6','10^6/µl',4.5,5.5,''],
+  ['Blood count','Hemoglobin',/(?<!Cell\s*)(?<!Mean\s*)Hemoglobin/i,'gdl','g/dl',13.5,18,''],
+  ['Blood count','Hematocrit',/Hematocrit/i,'pct','%',41,53,''],
+  ['Blood count','MCV',/MCV/,'fl','fl',79,97,''],
+  ['Blood count','MCH',/MCH(?!C)/,'pgcell','pg',27,35,''],
+  ['Blood count','MCHC',/MCHC/,'gdl','g/dl',32,36,''],
+  ['Blood count','RDW',/RDW/,'pct','%',11.6,15,''],
+  ['Blood count','Platelets',/Platelets/i,'k3','10^3/µl',150,450,''],
+  ['Blood count','MPV',/MPV/,'fl','fl',8.5,12.9,''],
+  ['Blood count','Neutrophils %',/Neutrophils\s*%/i,'pct','%',40,75,''],
+  ['Blood count','Lymphocytes %',/Lymphocytes\s*%/i,'pct','%',22,43,''],
+  ['Blood count','Monocytes %',/Monocytes\s*%/i,'pct','%',3,13,''],
+  ['Blood count','Eosinophils %',/Eosinophils\s*%/i,'pct','%',0,6,''],
+  ['Blood count','Basophils %',/Basophils\s*%/i,'pct','%',0,2,''],
+  ['Blood count','Neutrophils #',/Neutrophils\s*#/i,'k3','10^3/µl',1.8,7.7,''],
+  ['Blood count','Lymphocytes #',/Lymphocytes\s*#/i,'k3','10^3/µl',1,4.8,''],
+  ['Blood count','Monocytes #',/Monocytes\s*#/i,'k3','10^3/µl',0,1.1,''],
+  ['Blood count','Eosinophils #',/Eosinophils\s*#/i,'k3','10^3/µl',0,0.6,''],
+  ['Blood count','Basophils #',/Basophils\s*#/i,'k3','10^3/µl',0,0.2,''],
+  ['Urine','Glucose (urine)',/Glucose\s*\(\s*U\s*\)/,'mgdl','mg/dl',null,null,''],
+  ['Urine','Ketones (urine)',/Ketone/i,'mgdl','mg/dl',null,null,''],
+  ['Urine','pH (urine)',/\bPH\s*\(\s*U\s*\)/i,'none','',5,8,''],
+  ['Urine','Protein (urine)',/Protein\s*\(\s*U\s*\)/i,'text','',null,null,''],
+  ['Urine','Nitrite (urine)',/Nitrit/i,'text','',null,null,''],
+  ['Urine','Leucocytes (urine)',/Leucocytes\s*\(\s*U\s*\)/i,'text','',null,null,''],
+  ['Urine','Erythrocytes (urine)',/Erythrocytes\s*\(\s*U\s*\)/i,'text','',null,null,''],
+  ['Urine','Bilirubin (urine)',/Bilirubin\s*\(\s*U\s*\)/i,'text','',null,null,''],
+  ['Urine','Urobilinogen (urine)',/Urobilinogen/i,'text','',null,null,''],
+].map(([group, test, re, u, unit, low, high, note]) => ({group, test, re, u, unit, low, high, note}));
+
+const NUM = '([<>]\\s*)?(\\d+(?:[.,]\\d+)?)';
+function findValue(t, text){
+  if(t.u === 'text'){ const m = /\b(NEGATIVE|POSITIVE|NORMAL|TRACE)\b/i.exec(text); return m ? m[1].toUpperCase() : null; }
+  const tidy = (m, op, n) => (op ? op.trim() : '') + n.replace(',', '.');
+  // The normal range is printed as "70 .......... 100"; drop it so its numbers can't pass for the result.
+  text = text.replace(/\d+(?:[.,]\d+)?\s*[.·…_\-]{3,}\s*\d+(?:[.,]\d+)?/g, ' ');
+  if(t.u === 'none'){ const m = new RegExp(NUM).exec(text); return m ? tidy(m, m[1], m[2]) : null; }
+  const cands = [];
+  for(const re of [new RegExp(NUM + '\\s*(?:' + U[t.u] + ')', 'g'),       // "98 mg/dl"
+                   new RegExp('(?:' + U[t.u] + ')\\s*' + NUM, 'g')]){     // "mg/dl 98" (right-to-left layout)
+    let m; while((m = re.exec(text))) cands.push(tidy(m, m[1], m[2]));
+  }
+  // If a range survived (OCR dropped the dots), prefer a number that isn't one of the range limits.
+  const notLimit = cands.find(v => +v.replace(/[<>]/, '') !== t.low && +v.replace(/[<>]/, '') !== t.high);
+  if(cands.length) return notLimit || cands[0];
+  let m;
+  // "<4" / ">10" results are printed without a unit next to them
+  m = /([<>])\s*(\d+(?:[.,]\d+)?)/.exec(text);
+  return m ? m[1] + m[2].replace(',', '.') : null;
 }
-async function kvGet(k){ const db = await idb(); return new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); }
-async function kvSet(k, v){ const db = await idb(); return new Promise(res => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => res(); }); }
+// For each known test: find the line with its name, then look for the value on that line and the
+// lines around it (OCR may put a table row's cells on neighbouring lines).
+function extractLabs(ocrText){
+  const lines = ocrText.replace(/\r/g, '').split('\n').map(s => s.replace(/[ \t ]+/g, ' ').trim()).filter(Boolean);
+  const found = [], missing = [];
+  const isName = l => LAB_TESTS.some(o => o.re.test(l));
+  const hits = LAB_TESTS.map(t => ({t, i: lines.findIndex(l => t.re.test(l))})).filter(h => h.i >= 0);
+  // When the value isn't on the name's own line, OCR has put it either on the line before (a
+  // right-to-left page read as "range unit value" then "name") or after. Decide once per report by
+  // which side more often holds a value in the test's own unit.
+  const unitOn = (t, j) => j >= 0 && j < lines.length && !isName(lines[j]) && U[t.u] && new RegExp(U[t.u]).test(lines[j]);
+  const before = hits.filter(h => unitOn(h.t, h.i - 1)).length, after = hits.filter(h => unitOn(h.t, h.i + 1)).length;
+  const order = before > after ? [0, -1, 1, -2, 2] : [0, 1, -1, 2, 3];
+  hits.forEach(({t, i}) => {
+    let value = null;
+    for(const j of order.map(d => i + d)){
+      if(j < 0 || j >= lines.length) continue;
+      const txt = j === i ? lines[j].replace(t.re, ' ') : lines[j];
+      if(j !== i && LAB_TESTS.some(o => o !== t && o.re.test(txt))) continue;   // another test's line
+      value = findValue(t, txt);
+      if(value != null) break;
+    }
+    if(value == null){ missing.push(t.test); return; }
+    found.push(Object.assign({}, t, {value}));
+  });
+  LAB_TESTS.forEach(t => { if(!hits.some(h => h.t === t)) missing.push(t.test); });
+  found.sort((a, b) => LAB_TESTS.indexOf(a) - LAB_TESTS.indexOf(b));
+  return {found, missing};
+}
+
+const labModal = fx('labModal');
+let labRead = null;   // {tab, pdfLink, date, found}
 function labFileName(){
   const d = fx('labDate').value;   // yyyy-mm-dd
   return d ? d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10) + '.pdf' : 'YYMMDD.pdf';
 }
-async function showLabFolder(){
-  const h = canPickFolder ? await kvGet('labFolder').catch(() => null) : null;
-  fx('labFolderRow').style.display = h ? 'block' : 'none';
-  if(h) fx('labFolderName').textContent = h.name;
-  fx('labWhere').textContent = canPickFolder
-    ? (h ? 'in the folder below.' : '— you\'ll pick the "Laboratory test results" folder once.')
-    : 'to Downloads (then move it to the "Laboratory test results" folder).';
+function labStep(n){
+  fx('labStep1').style.display = n === 1 ? '' : 'none';
+  fx('labStep2').style.display = n === 2 ? '' : 'none';
+  fx('labSave').textContent = n === 1 ? 'Upload & read' : 'Save to sheet';
 }
-async function pickLabFolder(){
-  const h = await window.showDirectoryPicker({ id: 'medtracker-labs', mode: 'readwrite', startIn: 'documents' });
-  await kvSet('labFolder', h);
-  return h;
+function labBusy(text){
+  fx('labBusy').style.display = text ? 'block' : 'none';
+  fx('labBusy').textContent = text || '';
+  fx('labSave').disabled = !!text;
 }
 function openLabModal(){
   fx('labCard').reset();
   fx('labError').textContent = '';
   fx('labName').textContent = labFileName();
-  showLabFolder();
+  labRead = null; labBusy(''); labStep(1);
   labModal.classList.add('open');
 }
 function closeLabModal(){ labModal.classList.remove('open'); }
 fx('labFile').addEventListener('change', () => {
   const f = fx('labFile').files[0];
-  // A file already named like 260903.pdf pre-fills the date; otherwise it stays for you to enter.
+  // A file already named like 260903.pdf pre-fills the date; otherwise you enter it.
   const m = f && /^(\d{2})(\d{2})(\d{2})/.exec(f.name);
   if(m) fx('labDate').value = `20${m[1]}-${m[2]}-${m[3]}`;
   fx('labName').textContent = labFileName();
 });
 fx('labDate').addEventListener('input', () => { fx('labName').textContent = labFileName(); });
-fx('labFolderChange').addEventListener('click', async e => {
-  e.preventDefault();
-  try{ await pickLabFolder(); showLabFolder(); } catch(err){ if(err.name !== 'AbortError') fx('labError').textContent = err.message; }
-});
 fx('labCancel').addEventListener('click', closeLabModal);
-labModal.addEventListener('click', e => { if(e.target === labModal) closeLabModal(); });
+labModal.addEventListener('click', e => { if(e.target === labModal && !fx('labSave').disabled) closeLabModal(); });
 fx('labUploadBtn').addEventListener('click', openLabModal);
+
+function fileToBase64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+}
+async function labPost(path, body){
+  const res = await fetch(PROXY_BASE_URL + path, {
+    method: 'POST', cache: 'no-store',
+    headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '')},
+    body: JSON.stringify(body),
+  });
+  let j = {}; try{ j = await res.json(); } catch(e){}
+  if(res.status === 401) throw new Error('Session expired — sign out and sign in again.');
+  if(res.status === 404 || /missing sheetid/i.test(j.error || '')) throw new Error('Lab report upload isn\'t set up on the proxy yet.');
+  if(!res.ok){ const e = new Error(j.error || ('Error ' + res.status)); e.status = res.status; throw e; }
+  return j;
+}
+
+function showLabReview(){
+  const {found, missing} = extractLabs(labRead.text);
+  labRead.found = found;
+  fx('labSummary').innerHTML = `<b>${labRead.tab}</b> · ${fmtDMY(new Date(labRead.date + 'T00:00'))} · ${found.length} test${found.length === 1 ? '' : 's'} recognised. ` +
+    `Check every value against the report${labRead.pdfLink ? ` (<a href="${esc(labRead.pdfLink)}" target="_blank" rel="noopener">open PDF</a>)` : ''}, correct any that are wrong, and untick rows you don't want.`;
+  fx('labRows').innerHTML = found.map((t, i) => `<tr data-i="${i}"><td><input type="checkbox" checked></td><td>${esc(t.test)}</td>` +
+    `<td><input type="text" value="${esc(t.value)}"></td><td class="muted">${esc(t.unit)}</td><td class="muted">${labRange(t)}</td></tr>`).join('');
+  fx('labRows').querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => cb.closest('tr').classList.toggle('off', !cb.checked)));
+  fx('labMissingBox').style.display = missing.length ? '' : 'none';
+  fx('labMissingSum').textContent = `Not found in this report (${missing.length})`;
+  fx('labMissing').textContent = missing.join(', ');
+  fx('labText').value = labRead.text;
+  labStep(2);
+}
+
+async function saveLabRows(replace){
+  const rows = [...fx('labRows').querySelectorAll('tr')].filter(tr => tr.querySelector('input[type=checkbox]').checked).map(tr => {
+    const t = labRead.found[+tr.dataset.i];
+    const v = tr.querySelector('input[type=text]').value.trim();
+    return [labRead.date, t.group, t.test, v, t.unit, t.low == null ? '' : t.low, t.high == null ? '' : t.high, t.note];
+  }).filter(r => r[3] !== '');
+  if(!rows.length) throw new Error('No rows to save.');
+  return labPost('/medtracker/lab-report/save', {sheetId: SHEET_ID, tab: labRead.tab, rows, pdfLink: labRead.pdfLink, replace: !!replace});
+}
+
 fx('labCard').addEventListener('submit', async e => {
   e.preventDefault();
-  const file = fx('labFile').files[0], name = labFileName();
-  if(!file || !fx('labDate').value){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
   fx('labError').textContent = '';
   try{
-    if(canPickFolder){
-      let dir = await kvGet('labFolder').catch(() => null);
-      if(!dir) dir = await pickLabFolder();
-      if(await dir.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
-         await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('No permission to write to the folder.');
-      let exists = false;
-      try{ await dir.getFileHandle(name); exists = true; } catch(_){}
-      if(exists && !confirm(name + ' already exists in ' + dir.name + '. Replace it?')) return;
-      const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
-      await w.write(file);
-      await w.close();
-      closeLabModal();
-      alert(`Saved ${name} in "${dir.name}".\n\nNext: ask Claude to add ${name.replace('.pdf', '')} to Lab results.`);
-    } else {
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      closeLabModal();
-      alert(`Downloaded as ${name}.\n\nMove it to the "Laboratory test results" folder, then ask Claude to add it to Lab results.`);
+    if(!labRead){
+      const file = fx('labFile').files[0], date = fx('labDate').value;
+      if(!file || !date){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
+      if(!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf'){ fx('labError').textContent = 'Choose a PDF file.'; return; }
+      labBusy('Uploading to Google Drive and reading the report… (up to a minute)');
+      const r = await labPost('/medtracker/lab-report/read', {sheetId: SHEET_ID, date, pdfBase64: await fileToBase64(file)});
+      labRead = {tab: r.tab, pdfLink: r.pdfLink, text: r.text || '', date};
+      labBusy('');
+      showLabReview();
+      return;
     }
+    labBusy('Saving to the sheet…');
+    let r;
+    try{ r = await saveLabRows(false); }
+    catch(err){
+      if(err.status !== 409) throw err;
+      labBusy('');
+      if(!confirm(`Tab ${labRead.tab} already exists in the sheet. Replace it with these values?`)) return;
+      labBusy('Saving to the sheet…');
+      r = await saveLabRows(true);
+    }
+    labBusy('');
+    closeLabModal();
+    setStatus(`Saved ${r.rows} results to tab ${r.tab}`);
+    refresh();
   } catch(err){
-    if(err.name === 'AbortError') return;   // folder picker cancelled
-    fx('labError').textContent = 'Could not save: ' + err.message;
+    labBusy('');
+    fx('labError').textContent = err.message;
   }
 });
+
 
 // Wired first, so a later failure can never leave the button dead.
 document.getElementById('refreshBtn').addEventListener('click', refresh);
