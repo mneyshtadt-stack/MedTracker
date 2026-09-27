@@ -461,7 +461,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790491538";
+const BUILD_ID = "1790492013";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -808,7 +808,9 @@ function renderByYear(el, section, rows, cfg){
   const span = parts => { const t = parts.filter(Boolean).join(' · '); return t ? ` <span>· ${t}</span>` : ''; };
   const groups = monthGroups(rows).filter(g => g.key <= curKey);
   const cur = groups.find(g => g.key === curKey);
-  let html = `<div class="month-current"><div class="mc-head"><b>${fmtMonth(now)}</b>${cur ? span([cfg.summary(cur.rows)]) : ''}</div>` +
+  // cfg.hideCurrentHead: no "Month Year · summary" line above the current month (Daily medication).
+  let html = `<div class="month-current">` +
+    (cfg.hideCurrentHead ? '' : `<div class="mc-head"><b>${fmtMonth(now)}</b>${cur ? span([cfg.summary(cur.rows)]) : ''}</div>`) +
     (cur ? cfg.monthBody(cur) : `<div class="card-sub">No entries yet this month</div>`) + `</div>`;
   const older = groups.filter(g => g.key < curKey);
   d3.groups(older, g => g.yr).sort((a,b) => b[0] - a[0]).forEach(([yr, months]) => {
@@ -879,7 +881,7 @@ function renderAdherence(){
   if(!rows.length){ el.innerHTML = '<div class="empty-note">No entries yet</div>'; return; }
   // How many day columns fit at a readable size (at least ~17px a box) on this screen.
   adhMaxCols = Math.max(7, Math.floor(((el.clientWidth || 320) - 60) / 20));
-  renderByYear(el, 'adh', rows, {summary: pctText, monthBody: adherenceGrid});
+  renderByYear(el, 'adh', rows, {summary: pctText, monthBody: adherenceGrid, hideCurrentHead: true});
 }
 
 let adhMaxCols = 16;
