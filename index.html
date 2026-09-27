@@ -151,6 +151,16 @@
   details{margin-top:10px; font-size:13px;}
   summary{cursor:pointer; color:var(--ink-2);}
 
+  .ghost-btn{font:inherit; font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--series-1); background:transparent; color:var(--series-1);}
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
+  .modal.open{display:flex;}
+  .modal-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; width:100%; max-width:400px;}
+  .modal-card h3{margin:0 0 4px; font-size:17px;}
+  .modal-hint{font-size:12px; color:var(--muted); margin-bottom:12px;}
+  .modal-error{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
+  #labFile{font:inherit; font-size:13px; max-width:210px;}
+
   /* Lab results */
   .lab-group{font-size:13px; font-weight:600; color:var(--ink-2); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.04em;}
   .lab-group:first-child{margin-top:4px;}
@@ -453,10 +463,30 @@
   </section>
 
   <section class="card">
-    <h2>Lab results</h2>
-    <div class="card-sub">Latest result, change since the previous test, and the normal range or target from the lab report</div>
+    <div class="card-head">
+      <div>
+        <h2>Lab results</h2>
+        <div class="card-sub">Latest result, change since the previous test, and the normal range or target from the lab report</div>
+      </div>
+      <button type="button" id="labUploadBtn" class="ghost-btn">+ Add lab report</button>
+    </div>
     <div class="scroll-x" id="labs"></div>
   </section>
+</div>
+
+<div id="labModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="labTitle">
+  <form id="labCard" class="modal-card" autocomplete="off">
+    <h3 id="labTitle">Add lab report</h3>
+    <div class="modal-hint">The PDF is saved as <b id="labName">YYMMDD.pdf</b> <span id="labWhere"></span></div>
+    <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf" required></div>
+    <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate" required></div>
+    <div id="labFolderRow" class="modal-hint" style="display:none">Folder: <b id="labFolderName"></b> · <a href="#" id="labFolderChange">Change</a></div>
+    <div id="labError" class="modal-error"></div>
+    <div class="f-actions">
+      <button type="button" id="labCancel">Cancel</button>
+      <button type="submit" class="primary" id="labSave">Save</button>
+    </div>
+  </form>
 </div>
 <div id="tip"></div>
 
@@ -483,7 +513,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790492592";
+const BUILD_ID = "1790493681";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1260,6 +1290,96 @@ fx('entryCancel').addEventListener('click', () => closeEntry());
 fx('fDate').addEventListener('change', fillEntryForm);
 fx('entryCard').addEventListener('submit', saveEntry);
 entryModal.addEventListener('click', e => { if(e.target === entryModal) closeEntry(); });
+
+// ---------- add lab report ----------
+// Saves the chosen PDF as YYMMDD.pdf (the test date). On a computer (Chrome / Edge) it goes straight
+// into a folder picked once -- the "Laboratory test results" folder -- whose handle is kept in this
+// browser's IndexedDB; elsewhere (phones) the renamed file is downloaded instead. The report never
+// leaves the device. Turning it into the YYMMDD tab of the sheet is a separate step (ask Claude).
+const labModal = fx('labModal');
+const canPickFolder = 'showDirectoryPicker' in window;
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('medtracker', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvGet(k){ const db = await idb(); return new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); }
+async function kvSet(k, v){ const db = await idb(); return new Promise(res => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => res(); }); }
+function labFileName(){
+  const d = fx('labDate').value;   // yyyy-mm-dd
+  return d ? d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10) + '.pdf' : 'YYMMDD.pdf';
+}
+async function showLabFolder(){
+  const h = canPickFolder ? await kvGet('labFolder').catch(() => null) : null;
+  fx('labFolderRow').style.display = h ? 'block' : 'none';
+  if(h) fx('labFolderName').textContent = h.name;
+  fx('labWhere').textContent = canPickFolder
+    ? (h ? 'in the folder below.' : '— you\'ll pick the "Laboratory test results" folder once.')
+    : 'to Downloads (then move it to the "Laboratory test results" folder).';
+}
+async function pickLabFolder(){
+  const h = await window.showDirectoryPicker({ id: 'medtracker-labs', mode: 'readwrite', startIn: 'documents' });
+  await kvSet('labFolder', h);
+  return h;
+}
+function openLabModal(){
+  fx('labCard').reset();
+  fx('labError').textContent = '';
+  fx('labName').textContent = labFileName();
+  showLabFolder();
+  labModal.classList.add('open');
+}
+function closeLabModal(){ labModal.classList.remove('open'); }
+fx('labFile').addEventListener('change', () => {
+  const f = fx('labFile').files[0];
+  // A file already named like 260903.pdf pre-fills the date; otherwise it stays for you to enter.
+  const m = f && /^(\d{2})(\d{2})(\d{2})/.exec(f.name);
+  if(m) fx('labDate').value = `20${m[1]}-${m[2]}-${m[3]}`;
+  fx('labName').textContent = labFileName();
+});
+fx('labDate').addEventListener('input', () => { fx('labName').textContent = labFileName(); });
+fx('labFolderChange').addEventListener('click', async e => {
+  e.preventDefault();
+  try{ await pickLabFolder(); showLabFolder(); } catch(err){ if(err.name !== 'AbortError') fx('labError').textContent = err.message; }
+});
+fx('labCancel').addEventListener('click', closeLabModal);
+labModal.addEventListener('click', e => { if(e.target === labModal) closeLabModal(); });
+fx('labUploadBtn').addEventListener('click', openLabModal);
+fx('labCard').addEventListener('submit', async e => {
+  e.preventDefault();
+  const file = fx('labFile').files[0], name = labFileName();
+  if(!file || !fx('labDate').value){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
+  fx('labError').textContent = '';
+  try{
+    if(canPickFolder){
+      let dir = await kvGet('labFolder').catch(() => null);
+      if(!dir) dir = await pickLabFolder();
+      if(await dir.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
+         await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('No permission to write to the folder.');
+      let exists = false;
+      try{ await dir.getFileHandle(name); exists = true; } catch(_){}
+      if(exists && !confirm(name + ' already exists in ' + dir.name + '. Replace it?')) return;
+      const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await w.write(file);
+      await w.close();
+      closeLabModal();
+      alert(`Saved ${name} in "${dir.name}".\n\nNext: ask Claude to add ${name.replace('.pdf', '')} to Lab results.`);
+    } else {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      closeLabModal();
+      alert(`Downloaded as ${name}.\n\nMove it to the "Laboratory test results" folder, then ask Claude to add it to Lab results.`);
+    }
+  } catch(err){
+    if(err.name === 'AbortError') return;   // folder picker cancelled
+    fx('labError').textContent = 'Could not save: ' + err.message;
+  }
+});
 
 // Wired first, so a later failure can never leave the button dead.
 document.getElementById('refreshBtn').addEventListener('click', refresh);
