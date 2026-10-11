@@ -5,212 +5,292 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MedTracker</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0d1b2a">
+<meta name="theme-color" content="#F3F5F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1512" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MedTracker">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+  /* Design: cool off-white ground, deep green-black ink, one teal accent; orange (with ▲/▼ and a label)
+     for anything out of range. Geist for text, Geist Mono for numbers. */
   :root{
     color-scheme: light;
-    --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
-    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
-    --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a;
-    --band:rgba(12,163,12,0.08);
-    --good-text:#006300; --bad-text:#b42323; --critical:#d03b3b;
-    --empty:#efeee9; --check:#3f9b4f; --unchecked:#7d7b75;
+    --page:#F3F5F3; --surface:#FFFFFF; --ink:#12201B; --ink-2:#4A5752; --muted:#66736E;
+    --grid:#EEF2F0; --axis:#D5DCD8; --border:#E2E7E4; --soft:#EEF2F0;
+    --series-1:#0B6E5F; --series-2:#B4500A; --series-3:#1D5FAF; --on-accent:#FFFFFF;
+    --accent-soft:#E3F1EE; --accent-line:#B7DDD4; --warn-soft:#FBEBDD; --warn-line:#F2C9A8; --warn-card:#FFFBF7;
+    --band:#E3F1EE;
+    --good-text:#0B6E5F; --bad-text:#9A4308; --critical:#B4500A;
+    --empty:#EEF2F0; --check:#0B6E5F; --unchecked:#B4500A;
+    --dark-card:#12201B; --dark-card-2:#24352F; --on-dark:#FFFFFF; --on-dark-2:#B9C9C2; --glow:#3DD6B5;
+    --mono:'Geist Mono', ui-monospace, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       color-scheme: dark;
-      --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
-      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-      --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
-      --band:rgba(12,163,12,0.14);
-      --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
-      --empty:#262624; --check:#3f9b4f; --unchecked:#8f8d86;
+      --page:#0E1512; --surface:#16201C; --ink:#EEF3F1; --ink-2:#B4C2BC; --muted:#8C9A95;
+      --grid:#23302B; --axis:#34433D; --border:#26332E; --soft:#1F2B26;
+      --series-1:#3DD6B5; --series-2:#F0A060; --series-3:#7FB1F0; --on-accent:#0E1512;
+      --accent-soft:#163A33; --accent-line:#24584D; --warn-soft:#3A2614; --warn-line:#5C3B1E; --warn-card:#1E1A15;
+      --band:rgba(61,214,181,0.12);
+      --good-text:#3DD6B5; --bad-text:#F0A060; --critical:#F0A060;
+      --empty:#23302B; --check:#3DD6B5; --unchecked:#F0A060;
+      --dark-card:#0A110E; --dark-card-2:#1B2823; --on-dark:#EEF3F1; --on-dark-2:#9FB1AA; --glow:#3DD6B5;
     }
   }
   :root[data-theme="dark"]{
     color-scheme: dark;
-    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
-    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
-    --band:rgba(12,163,12,0.14);
-    --good-text:#0ca30c; --bad-text:#e66767; --critical:#d03b3b;
-    --empty:#262624; --check:#3f9b4f; --unchecked:#8f8d86;
+    --page:#0E1512; --surface:#16201C; --ink:#EEF3F1; --ink-2:#B4C2BC; --muted:#8C9A95;
+    --grid:#23302B; --axis:#34433D; --border:#26332E; --soft:#1F2B26;
+    --series-1:#3DD6B5; --series-2:#F0A060; --series-3:#7FB1F0; --on-accent:#0E1512;
+    --accent-soft:#163A33; --accent-line:#24584D; --warn-soft:#3A2614; --warn-line:#5C3B1E; --warn-card:#1E1A15;
+    --band:rgba(61,214,181,0.12);
+    --good-text:#3DD6B5; --bad-text:#F0A060; --critical:#F0A060;
+    --empty:#23302B; --check:#3DD6B5; --unchecked:#F0A060;
+    --dark-card:#0A110E; --dark-card-2:#1B2823; --on-dark:#EEF3F1; --on-dark-2:#9FB1AA; --glow:#3DD6B5;
   }
 
   *{box-sizing:border-box;}
   body{margin:0; background:var(--page); color:var(--ink);
-    font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:15px; line-height:1.45;}
+    font-family:'Geist', system-ui, -apple-system, "Segoe UI", sans-serif; font-size:15px; line-height:1.45;
+    -webkit-tap-highlight-color:transparent;}
+  button, input{font-family:inherit;}
   a{color:var(--series-1);}
-  .wrap{display:none; max-width:1040px; margin:0 auto; padding:16px;}
+  .wrap{display:none; max-width:1200px; margin:0 auto; padding:24px 20px 56px;}
   body.mt-unlocked .wrap{display:block;}
   body.mt-unlocked #lockScreen{display:none;}
 
+  /* Buttons */
+  .btn{font:inherit; font-size:14px; font-weight:500; min-height:44px; padding:0 16px; border-radius:10px; cursor:pointer;
+    border:1px solid var(--axis); background:var(--surface); color:var(--ink); display:inline-flex; align-items:center; justify-content:center; gap:6px;}
+  .btn.primary{border-color:var(--series-1); background:var(--series-1); color:var(--on-accent); font-weight:600;}
+  .btn.dark{border-color:var(--ink); background:var(--ink); color:var(--page); font-weight:600;}
+  .btn:disabled{opacity:0.5; cursor:default;}
+
   #lockScreen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;}
-  #lockCard{background:var(--surface); border:1px solid var(--border); border-radius:14px;
-    padding:28px 24px; max-width:360px; width:100%; text-align:center;}
+  #lockCard{background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:32px 24px; max-width:380px; width:100%; text-align:center;}
   #lockCard h2{margin:12px 0 4px; font-size:22px;}
   #lockCard p{margin:0 0 18px; color:var(--ink-2); font-size:14px;}
   #googleSignInBtn{display:flex; justify-content:center; min-height:44px;}
   #lockError{color:var(--bad-text); font-size:13px; margin-top:10px; min-height:1em;}
-  #webauthnLoginBtn{display:none; width:100%; max-width:260px; margin:14px auto 0; font:inherit; font-size:14px;
-    padding:10px 14px; border-radius:22px; cursor:pointer; border:1px solid var(--series-1); background:var(--series-1); color:#fff;}
+  #webauthnLoginBtn{display:none; width:100%; max-width:280px; margin:14px auto 0; font:inherit; font-size:15px; font-weight:600;
+    min-height:48px; padding:0 16px; border-radius:12px; cursor:pointer; border:0; background:var(--series-1); color:var(--on-accent);}
 
-  header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
+  /* Header */
+  header{display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:20px;}
   h1{margin:0; font-size:24px; display:flex; align-items:center; gap:10px;}
   .brand{margin:0; line-height:0;}
-  /* Logo with the name to its right, like SheetPulse's header. */
-  .brand-row{display:flex; align-items:center; gap:14px; margin:0; font-size:34px; font-weight:700; letter-spacing:-0.01em;}
-  @media (max-width:420px){ .brand-row{font-size:28px; gap:12px;} .brand-row .brand-logo{width:56px; height:56px;} }
+  .brand-row{display:flex; align-items:center; gap:14px; margin:0; font-size:28px; font-weight:700; letter-spacing:-0.02em;}
+  .brand-row .brand-logo{width:56px; height:56px;}
+  @media (max-width:420px){ .brand-row{font-size:24px; gap:12px;} .brand-row .brand-logo{width:48px; height:48px;} }
   .brand-logo{display:block;}
   #lockCard .brand{display:flex; justify-content:center; margin:0 0 12px;}
-  #accountLine{font-size:13px; color:var(--ink-2); margin-top:6px;}
-  .hdr-right{text-align:right; font-size:12px; color:var(--muted);}
-  #refreshBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer;
-    border:1px solid var(--border); background:var(--surface); color:var(--ink);}
-  #status{margin-top:6px; min-height:1em;}
+  #todayLine{font-size:14px; color:var(--ink-2);}
+  #accountLine{font-size:13px; color:var(--ink-2); margin-top:4px;}
+  .hdr-right{display:flex; flex-direction:column; align-items:flex-end; gap:6px; font-size:12px; color:var(--muted);}
+  .hdr-actions{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end;}
+  #status{min-height:1em;}
   #status.err{color:var(--bad-text);}
 
-  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px;}
-  .tile{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px;}
-  .tile .lbl{font-size:12px; color:var(--ink-2);}
-  .tile .val{font-size:26px; font-weight:600; margin:2px 0;}
-  .tile .val small{font-size:14px; font-weight:400; color:var(--ink-2);}
-  .tile .sub{font-size:12px; color:var(--muted);}
-  .up{color:var(--bad-text);} .down{color:var(--good-text);}
+  /* Today card + summary tiles */
+  .top-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:16px;}
+  .today{grid-row:span 2; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px;
+    display:flex; flex-direction:column; gap:12px;}
+  .today-head{display:flex; justify-content:space-between; align-items:baseline;}
+  .today-head h2{margin:0; font-size:16px; font-weight:600;}
+  .today-head span{font-size:13px; color:var(--ink-2);}
+  .today-bar{height:6px; border-radius:3px; background:var(--soft); overflow:hidden;}
+  .today-bar i{display:block; height:6px; border-radius:3px; background:var(--series-1); transition:width .2s;}
+  .med-toggle{display:flex; align-items:center; gap:12px; min-height:52px; padding:0 14px; border-radius:12px; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink); font:inherit; font-size:15px; font-weight:500; text-align:left; width:100%;}
+  .med-toggle .box{width:24px; height:24px; border-radius:7px; flex:none; border:2px solid var(--axis); display:flex; align-items:center; justify-content:center;}
+  .med-toggle .name{flex:1;}
+  .med-toggle[aria-pressed="true"]{border-color:var(--accent-line); background:var(--accent-soft);}
+  .med-toggle[aria-pressed="true"] .box{border-color:var(--series-1); background:var(--series-1);}
+  .med-toggle[aria-pressed="true"] .box::after{content:''; width:6px; height:11px; margin-top:-2px; border:solid var(--on-accent); border-width:0 2.2px 2.2px 0; transform:rotate(45deg);}
+  .today-fast{display:flex; flex-direction:column; gap:6px; padding-top:4px;}
+  .today-fast label{font-size:13px; color:var(--ink-2);}
+  .today-fast .row{display:flex; gap:8px;}
+  .today-fast input{flex:1; min-width:0; height:48px; padding:0 14px; border-radius:12px; border:1px solid var(--axis);
+    background:var(--page); color:var(--ink); font:500 18px var(--mono);}
+  #todayMsg{font-size:13px; min-height:1em; color:var(--ink-2);}
+  #todayMsg.err{color:var(--bad-text);}
 
-  section.card{background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:14px 16px; margin-bottom:16px;}
-  section.card h2{font-size:16px; margin:0 0 2px;}
-  .card-sub{font-size:12px; color:var(--muted); margin-bottom:8px;}
-  .card-head{display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;}
-  .ranges{display:flex; gap:4px;}
-  .ranges button{font:inherit; font-size:12px; padding:4px 10px; border-radius:6px; cursor:pointer;
-    border:1px solid var(--border); background:transparent; color:var(--ink-2);}
-  .ranges button.on{background:var(--ink); color:var(--surface); border-color:var(--ink);}
+  .tiles{display:contents;}
+  .tile{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 20px; display:flex; flex-direction:column; gap:4px;}
+  .tile .lbl{font-size:13px; color:var(--ink-2);}
+  .tile .val{font:600 32px/1.1 var(--mono); letter-spacing:-0.02em; margin:2px 0;}
+  .tile .val small{font:500 14px 'Geist', sans-serif; color:var(--ink-2); letter-spacing:0;}
+  .tile .sub{font-size:13px; color:var(--ink-2);}
+  .up{color:var(--bad-text); font-weight:600;} .down{color:var(--good-text); font-weight:600;}
+
+  /* Cards */
+  section.card{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:16px; scroll-margin-top:16px;}
+  section.card h2{font-size:16px; font-weight:600; margin:0 0 2px;}
+  .card-sub{font-size:13px; color:var(--ink-2); margin-bottom:10px;}
+  .card-head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;}
+  /* Segmented control */
+  .ranges{display:inline-flex; gap:4px; padding:4px; background:var(--soft); border-radius:12px;}
+  .ranges button{font:inherit; font-size:13px; font-weight:600; min-width:48px; height:36px; padding:0 12px; border-radius:9px; cursor:pointer;
+    border:0; background:transparent; color:var(--ink-2);}
+  .ranges button.on{background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,0.08);}
   .chart{width:100%; position:relative;}
   .chart svg{display:block; width:100%; overflow:visible;}
-  .chart-title{font-size:13px; color:var(--ink-2); margin:12px 0 0;}
+  .chart-title{font-size:13px; font-weight:600; color:var(--ink-2); margin:12px 0 0;}
   .empty-note{color:var(--muted); font-size:13px; padding:20px 0; text-align:center;}
 
-  .tick text{fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums;}
+  .tick text{fill:var(--muted); font:500 11px var(--mono);}
   .gridline{stroke:var(--grid); stroke-width:1;}
   .baseline{stroke:var(--axis); stroke-width:1;}
 
   #tip{position:absolute; pointer-events:none; background:var(--surface); color:var(--ink);
-    border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px;
-    box-shadow:0 4px 14px rgba(0,0,0,0.12); display:none; z-index:10; white-space:nowrap;}
+    border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.14); display:none; z-index:10; white-space:nowrap;}
   #tip b{font-weight:600;}
 
   /* Collapsible month groups, like the sheet's +/- row groups. */
   details.month{border-top:1px solid var(--grid);}
   details.month:first-child{border-top:none;}
-  details.month > summary{list-style:none; cursor:pointer; padding:9px 0; font-size:13px; color:var(--ink);
+  details.month > summary{list-style:none; cursor:pointer; padding:10px 0; font-size:13px; color:var(--ink);
     display:flex; align-items:baseline; flex-wrap:wrap; column-gap:8px; row-gap:2px; user-select:none;}
   details.month > summary::-webkit-details-marker{display:none;}
   details.month > summary::before{content:'+'; display:inline-flex; align-items:center; justify-content:center;
-    flex:0 0 18px; height:18px; border:1px solid var(--axis); border-radius:4px; font-size:13px; line-height:1; color:var(--ink-2);}
+    flex:0 0 20px; height:20px; border:1px solid var(--axis); border-radius:6px; font-size:13px; line-height:1; color:var(--ink-2);}
   details.month[open] > summary::before{content:'\2212';}
   details.month > summary b{font-weight:600; white-space:nowrap;}
   details.month > summary span{color:var(--ink-2);}
   details.month > summary .tag{font-size:11px; color:var(--muted); border:1px solid var(--grid); border-radius:10px; padding:0 7px;}
-  .month-body{padding:0 0 12px 26px;}
+  .month-body{padding:0 0 12px 28px;}
   #adherence .month-body{padding-left:0;}
-  .year-body{padding:0 0 4px 26px;}
+  .year-body{padding:0 0 4px 28px;}
   .month-current{padding-bottom:12px;}
   .mc-head{display:flex; flex-wrap:wrap; align-items:baseline; column-gap:8px; font-size:13px; padding:4px 0 8px;}
   .mc-head span{color:var(--ink-2);}
   tr.planned td{color:var(--muted);}
-  .adh-grid{display:grid; gap:3px; align-items:center; justify-content:start;}
-  .adh-grid .med{font-size:12px; color:var(--ink-2); white-space:nowrap; padding-right:6px;}
+  .adh-grid{display:grid; gap:6px; align-items:center; justify-content:start;}
+  .adh-grid .med{font-size:14px; font-weight:500; color:var(--ink); white-space:nowrap; padding-right:8px;}
   .has-tip{cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:var(--axis);}
   .adh-grid .med[data-med]{cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:var(--axis);}
-  .adh-grid .dn{font-size:9px; color:var(--muted); text-align:center; font-variant-numeric:tabular-nums;}
-  /* Checkbox look, like the sheet: green box with a white tick = taken, empty box = not taken. */
-  .cell, .cb{aspect-ratio:1; border-radius:4px; background:transparent;
+  .adh-grid .dn{font:500 11px var(--mono); color:var(--muted); text-align:center;}
+  /* Checkbox look: teal box with a white tick = taken, orange outline = not taken. */
+  .cell, .cb{aspect-ratio:1; border-radius:7px; background:transparent;
     display:flex; align-items:center; justify-content:center;}
-  .cb{display:inline-flex; width:16px; height:16px; vertical-align:-3px;}
-  .cell.taken::after, .cb.taken::after{content:''; width:28%; height:52%; margin-top:-12%;
-    border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg);}
+  .cb{display:inline-flex; width:16px; height:16px; border-radius:4px; vertical-align:-3px;}
+  .cell.taken::after, .cb.taken::after{content:''; width:26%; height:48%; margin-top:-10%;
+    border:solid var(--on-accent); border-width:0 2px 2px 0; transform:rotate(45deg);}
   .cell.taken, .cb.taken{background:var(--check);}
-  .cell.missed, .cb.missed{box-shadow:inset 0 0 0 1.5px var(--unchecked);}
-  .cell.planned, .cb.planned{box-shadow:inset 0 0 0 1px var(--muted); opacity:0.6;}
+  .cell.missed, .cb.missed{box-shadow:inset 0 0 0 2px var(--unchecked);}
+  .cell.planned, .cb.planned{box-shadow:inset 0 0 0 1.5px var(--axis); opacity:0.7;}
   .cell.blank{background:var(--empty);}
-  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); margin-top:10px;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--ink-2); margin-top:10px;}
   .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px;}
 
   table{border-collapse:collapse; width:100%; font-size:13px;}
-  th,td{padding:6px 8px; text-align:right; border-bottom:1px solid var(--grid); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  th,td{padding:8px; text-align:right; border-bottom:1px solid var(--grid); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  td{font-family:var(--mono); font-size:13px;}
+  td:first-child{font-family:'Geist', sans-serif;}
   th:first-child,td:first-child{text-align:left;}
   th{font-weight:600; color:var(--ink-2); font-size:12px;}
   .scroll-x{overflow-x:auto;}
   details{margin-top:10px; font-size:13px;}
   summary{cursor:pointer; color:var(--ink-2);}
 
-  .ghost-btn{font:inherit; font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer; white-space:nowrap;
-    border:1px solid var(--series-1); background:transparent; color:var(--series-1);}
-  .modal{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
+  .ghost-btn{font:inherit; font-size:14px; font-weight:500; min-height:44px; padding:0 14px; border-radius:10px; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--axis); background:var(--surface); color:var(--ink);}
+  .modal{position:fixed; inset:0; background:rgba(10,18,15,0.5); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
   .modal.open{display:flex;}
-  .modal-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; width:100%; max-width:400px;}
-  .modal-card h3{margin:0 0 4px; font-size:17px;}
-  .modal-hint{font-size:12px; color:var(--muted); margin-bottom:12px;}
+  .modal-card{background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:22px; width:100%; max-width:420px;}
+  .modal-card h3{margin:0 0 6px; font-size:20px; font-weight:700; letter-spacing:-0.01em;}
+  .modal-hint{font-size:13px; color:var(--ink-2); margin-bottom:14px;}
   .modal-error{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
   #labFile{font:inherit; font-size:13px; max-width:210px;}
   #labModal .modal-card{max-width:560px; max-height:calc(100vh - 32px); overflow:auto;}
-  .lab-links{font-size:12px; color:var(--muted); margin:10px 0 0;}
+  .lab-links{font-size:13px; color:var(--ink-2); margin:12px 0 0;}
   .lab-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
-  .cmd-box{display:flex; align-items:center; gap:8px; background:var(--page); border:1px solid var(--axis); border-radius:8px; padding:8px 10px; margin:4px 0 10px;}
-  .cmd-box code{flex:1; font:14px ui-monospace, Consolas, monospace;}
-  .modal-steps{font-size:13px; margin:0 0 6px; padding-left:20px; line-height:1.6;}
-  #labSync{font-size:12px; color:var(--muted); margin-top:6px; min-height:1em;}
+  .cmd-box{display:flex; align-items:center; gap:8px; background:var(--page); border:1px solid var(--axis); border-radius:10px; padding:8px 10px; margin:4px 0 12px;}
+  .cmd-box code{flex:1; font:14px var(--mono);}
+  .modal-steps{font-size:14px; margin:0 0 6px; padding-left:20px; line-height:1.6;}
+  #labSync{font-size:13px; color:var(--ink-2); margin-top:6px; min-height:1em;}
   #labSync button{margin-left:6px;}
 
   /* Lab results */
-  .lab-group{font-size:13px; font-weight:600; color:var(--ink-2); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.04em;}
+  .lab-group{font-size:12px; font-weight:600; color:var(--ink-2); margin:18px 0 10px; text-transform:uppercase; letter-spacing:0.08em;}
   .lab-group:first-child{margin-top:4px;}
   .lab-cards{display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px;}
-  .lab-card{border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:var(--page);}
+  .lab-card{border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface); display:flex; flex-direction:column; gap:4px;}
+  .lab-card.off{border-color:var(--warn-line); background:var(--warn-card);}
   .lab-top{display:flex; justify-content:space-between; align-items:center; gap:8px;}
-  .lab-name{font-size:13px; font-weight:600;}
-  .lab-mid{display:flex; justify-content:space-between; align-items:center; gap:8px; margin:4px 0 2px;}
-  .lab-val{font-size:24px; font-weight:600;}
-  .lab-val small{font-size:12px; font-weight:400; color:var(--ink-2);}
-  .lab-sub{font-size:11.5px; color:var(--muted);}
+  .lab-name{font-size:14px; font-weight:600;}
+  .lab-mid{display:flex; justify-content:space-between; align-items:center; gap:8px; margin:2px 0;}
+  .lab-val{font:600 26px/1.1 var(--mono);}
+  .lab-val small{font:500 12px 'Geist', sans-serif; color:var(--ink-2);}
+  .lab-sub{font-size:12px; color:var(--ink-2);}
   .spark{flex:0 0 auto;}
-  .chip{display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:10px; white-space:nowrap;}
-  .chip.ok{color:var(--good-text); background:rgba(12,163,12,0.12);}
-  .chip.high, .chip.low{color:var(--bad-text); background:rgba(208,59,59,0.12);}
+  .chip{display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap;}
+  .chip.ok{color:var(--good-text); background:var(--accent-soft);}
+  .chip.high, .chip.low{color:var(--bad-text); background:var(--warn-soft);}
   .lab-table td.st-high, .lab-table td.st-low{color:var(--bad-text); font-weight:600;}
   .muted{color:var(--muted);}
-  details.lab-panel{border-top:1px solid var(--grid); padding:8px 0;}
-  details.lab-panel:first-of-type{margin-top:12px;}
+  details.lab-panel{border-top:1px solid var(--grid); padding:10px 0;}
+  details.lab-panel:first-of-type{margin-top:14px;}
   details.lab-panel > summary{cursor:pointer; font-size:13px; line-height:1.9;}
   details.lab-panel .scroll-x{margin-top:6px;}
 
-  #addBtn{font:inherit; font-size:13px; padding:6px 14px; border-radius:8px; cursor:pointer; margin-right:6px;
-    border:1px solid var(--series-1); background:var(--series-1); color:#fff;}
-  #entryModal{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
+  /* Add entry dialog */
+  #entryModal{position:fixed; inset:0; background:rgba(10,18,15,0.5); display:none; align-items:center; justify-content:center; padding:16px; z-index:20;}
   #entryModal.open{display:flex;}
-  #entryCard{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; width:100%; max-width:380px;}
-  #entryCard h3{margin:0 0 4px; font-size:17px;}
-  #entryHint{font-size:12px; color:var(--muted); margin-bottom:12px; min-height:1em;}
-  .f-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
-  .f-row label{font-size:14px;}
-  .f-row input[type=date], .f-row input[type=number]{font:inherit; width:150px; padding:7px 9px; border-radius:8px;
+  #entryCard{background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:22px; width:100%; max-width:420px;}
+  #entryCard h3{margin:0 0 4px; font-size:20px; font-weight:700; letter-spacing:-0.01em;}
+  #entryHint{font-size:13px; color:var(--ink-2); margin-bottom:14px; min-height:1em;}
+  .f-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;}
+  .f-row label{font-size:14px; font-weight:500;}
+  .f-row input[type=date], .f-row input[type=number]{font:500 16px var(--mono); width:170px; height:44px; padding:0 12px; border-radius:10px;
     border:1px solid var(--axis); background:var(--page); color:var(--ink);}
   .f-row input[type=checkbox]{width:22px; height:22px; accent-color:var(--series-1);}
-  .f-checks{display:flex; gap:16px; margin:4px 0 14px; flex-wrap:wrap;}
-  .f-checks label{display:flex; align-items:center; gap:6px; font-size:14px;}
-  .f-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:6px;}
-  .f-actions button{font:inherit; font-size:14px; padding:8px 16px; border-radius:8px; cursor:pointer;
-    border:1px solid var(--border); background:transparent; color:var(--ink);}
-  .f-actions button.primary{background:var(--series-1); border-color:var(--series-1); color:#fff;}
+  .f-checks{display:flex; gap:8px; margin:4px 0 14px; flex-wrap:wrap;}
+  .f-checks label{flex:1; min-width:96px; display:flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 10px;
+    border:1px solid var(--axis); border-radius:12px; font-size:14px; font-weight:600; cursor:pointer;}
+  .f-checks label:has(input:checked){border-color:var(--series-1); background:var(--accent-soft);}
+  .f-checks input{width:20px; height:20px; accent-color:var(--series-1); margin:0;}
+  .f-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:8px;}
+  .f-actions button{font:inherit; font-size:15px; font-weight:600; min-height:48px; padding:0 18px; border-radius:12px; cursor:pointer;
+    border:1px solid var(--axis); background:var(--surface); color:var(--ink);}
+  .f-actions button.primary{background:var(--series-1); border-color:var(--series-1); color:var(--on-accent);}
   .f-actions button:disabled{opacity:0.5; cursor:default;}
   #entryError{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
+
+  /* Phone: bottom navigation, dialogs as bottom sheets */
+  #bottomNav{display:none;}
+  @media (max-width:700px){
+    .wrap{padding:18px 14px calc(104px + env(safe-area-inset-bottom));}
+    header{margin-bottom:14px;}
+    .hdr-actions .hide-sm{display:none;}
+    .hdr-right{width:100%; flex-direction:row-reverse; justify-content:space-between; align-items:center;}
+    #buildLine{display:none;}
+    .today{grid-row:auto;}
+    section.card{padding:16px; border-radius:18px;}
+    body.mt-unlocked #bottomNav{display:flex; position:fixed; left:0; right:0; bottom:0; z-index:15; background:var(--surface);
+      border-top:1px solid var(--border); justify-content:space-around; align-items:flex-start;
+      padding:8px 6px calc(8px + env(safe-area-inset-bottom));}
+    #bottomNav a, #bottomNav button.nav-item{flex:1; max-width:84px; min-height:52px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+      text-decoration:none; color:var(--muted); font:500 11px 'Geist', sans-serif; background:none; border:0; cursor:pointer; padding:0;}
+    #bottomNav svg{width:24px; height:24px;}
+    #bottomNav .nav-add{flex:none; width:56px; height:56px; margin-top:-20px; border-radius:18px; border:0; background:var(--series-1); color:var(--on-accent);
+      display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 6px 16px rgba(11,110,95,0.3);}
+    #entryModal, .modal{align-items:flex-end; padding:0;}
+    #entryCard, .modal-card{max-width:none; border-radius:24px 24px 0 0; padding:20px 18px calc(24px + env(safe-area-inset-bottom)); border-width:1px 0 0;}
+    .f-row input[type=date], .f-row input[type=number]{width:60%;}
+  }
+  @media (hover:hover){
+    .btn:hover, .ghost-btn:hover, .med-toggle:hover{border-color:var(--ink-2);}
+    .btn.primary:hover, .f-actions button.primary:hover{filter:brightness(1.08);}
+  }
 </style>
 </head>
 <body>
@@ -423,20 +503,42 @@
 
 <div class="wrap">
   <header>
-    <div>
-      <h1 class="brand-row"><svg class="brand-logo" viewBox="0 0 192 192" width="64" height="64" aria-hidden="true"><use href="#mtLogo"></use></svg>MedTracker</h1>
-      <div id="accountLine"></div>
+    <div style="display:flex; align-items:center; gap:14px">
+      <svg class="brand-logo" viewBox="0 0 192 192" width="56" height="56" aria-hidden="true"><use href="#mtLogo"></use></svg>
+      <div>
+        <h1 class="brand-row">MedTracker</h1>
+        <div id="todayLine"></div>
+        <div id="accountLine"></div>
+      </div>
     </div>
     <div class="hdr-right">
-      <button id="addBtn" type="button">+ Add entry</button><button id="refreshBtn" type="button">Refresh</button>
+      <div class="hdr-actions">
+        <button id="refreshBtn" type="button" class="btn">Refresh</button>
+        <button id="addBtn" type="button" class="btn primary hide-sm">+ Add entry</button>
+      </div>
       <div id="status"></div>
       <div id="buildLine"></div>
     </div>
   </header>
 
-  <div class="tiles" id="tiles"></div>
+  <div class="top-grid">
+    <section class="today" id="today" aria-labelledby="todayTitle">
+      <div class="today-head"><h2 id="todayTitle">Today</h2><span id="todayCount"></span></div>
+      <div class="today-bar"><i id="todayBar" style="width:0"></i></div>
+      <div id="todayMeds"></div>
+      <div class="today-fast">
+        <label for="todayFasting">Fasting sugar (mg/dL)</label>
+        <div class="row">
+          <input id="todayFasting" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 96">
+          <button type="button" id="todaySave" class="btn dark">Save</button>
+        </div>
+        <div id="todayMsg"></div>
+      </div>
+    </section>
+    <div class="tiles" id="tiles"></div>
+  </div>
 
-  <section class="card">
+  <section class="card" id="medsSection">
     <h2>Daily medication</h2>
     <div class="card-sub">Only days with an entry in the sheet are shown</div>
     <div id="adherence"></div>
@@ -446,7 +548,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="trendsSection">
     <div class="card-head">
       <div>
         <h2>Fasting sugar</h2>
@@ -464,13 +566,13 @@
     <div id="dailyTable"></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="ozempicSection">
     <h2>Ozempic dose</h2>
     <div class="card-sub">mg per weekly injection · dashed and hollow = planned</div>
     <div class="chart" id="ozempicChart"></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="labsSection">
     <div class="card-head">
       <div>
         <h2>Lab results</h2>
@@ -481,13 +583,21 @@
           <button type="button" data-f="all">All</button>
           <button type="button" data-f="out">Out of range</button>
         </div>
-        <button type="button" id="labUploadBtn" class="ghost-btn">+ Add lab report</button>
+        <button type="button" id="labUploadBtn" class="btn">+ Add lab report</button>
       </div>
     </div>
     <div id="labSync"></div>
     <div class="scroll-x" id="labs"></div>
   </section>
 </div>
+
+<nav id="bottomNav" aria-label="Main">
+  <a href="#today"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Today</a>
+  <a href="#trendsSection"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="4,16 9,11 13,14 20,7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Trends</a>
+  <button type="button" class="nav-add" id="navAdd" aria-label="Add entry"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+  <a href="#medsSection"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Meds</a>
+  <a href="#labsSection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M8 3h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Labs</a>
+</nav>
 
 <div id="labModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="labTitle">
   <form id="labCard" class="modal-card" autocomplete="off">
@@ -500,7 +610,7 @@
     </div>
     <div id="labStep2" style="display:none">
       <div class="modal-hint" id="labDone"></div>
-      <div class="cmd-box"><code id="labCmd"></code><button type="button" id="labCopy" class="ghost-btn">Copy</button></div>
+      <div class="cmd-box"><code id="labCmd"></code><button type="button" id="labCopy" class="btn">Copy</button></div>
       <ol class="modal-steps">
         <li>Open <b>Claude</b> in the <b>MedTracker</b> folder (Code tab).</li>
         <li>Paste the command (<b>Ctrl+V</b>) and press <b>Enter</b>. Claude reads the report and writes <b id="labCsv">YYMMDD.csv</b>.</li>
@@ -540,7 +650,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1790513854";
+const BUILD_ID = "1791702038";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1155,7 +1265,7 @@ function renderLabs(){
         change = `first result (not measured on ${fmtDM(series[0].date)})`;
       }
       const note = latest.note ? ` title="${esc(latest.note)}"` : '';
-      return `<div class="lab-card"${note}><div class="lab-top"><span class="lab-name">${esc(t)}</span>${chip(labStatus(latest))}</div>` +
+      return `<div class="lab-card${isOff(latest) ? ' off' : ''}"${note}><div class="lab-top"><span class="lab-name">${esc(t)}</span>${chip(labStatus(latest))}</div>` +
         `<div class="lab-mid"><span class="lab-val">${labValue(latest)} <small>${esc(latest.unit)}</small></span>${labSpark(series)}</div>` +
         `<div class="lab-sub">${change ? change + ' · ' : ''}${fmtDMY(latest.date)}${labRange(latest) ? ` · ${latest.low != null && latest.high != null ? 'normal' : 'target'} ${labRange(latest)}` : ''}</div></div>`;
     }).join('');
@@ -1231,6 +1341,7 @@ function renderLabsLegacy(){
 }
 
 function renderAll(){
+  renderToday();
   renderTiles();
   renderDaily();
   renderOzempic();
@@ -1354,6 +1465,65 @@ async function saveEntry(ev){
   }
 }
 fx('addBtn').addEventListener('click', openEntry);
+fx('navAdd').addEventListener('click', openEntry);
+
+// ---------- Today card ----------
+// Quick check-in for today's row: tapping a medicine saves it at once; fasting sugar saves with its
+// button. Writes through the same /medtracker/entry route as Add entry, keeping today's Ozempic value.
+let todayPending = null, todaySaving = false;
+function todayRow(){
+  const iso = toIsoDate(new Date());
+  return state.rows.find(r => toIsoDate(r.date) === iso) || null;
+}
+function renderToday(){
+  const now = new Date();
+  fx('todayLine').textContent = now.toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long'});
+  const row = todayRow();
+  if(!todayPending) todayPending = {xigduo: !!(row && row.xigduo), vitd: !!(row && row.vitd), stator: !!(row && row.stator)};
+  const done = MEDS.filter(m => todayPending[m.key]).length;
+  fx('todayCount').textContent = `${done} of ${MEDS.length} taken`;
+  fx('todayBar').style.width = Math.round(100 * done / MEDS.length) + '%';
+  fx('todayMeds').innerHTML = MEDS.map(m =>
+    `<button type="button" class="med-toggle" data-med="${m.key}" aria-pressed="${todayPending[m.key] ? 'true' : 'false'}" style="margin-bottom:8px">` +
+    `<span class="box" aria-hidden="true"></span><span class="name">${esc(m.label)}</span></button>`).join('');
+  const inp = fx('todayFasting');
+  if(document.activeElement !== inp && !inp.dataset.dirty) inp.value = row && row.fasting != null ? row.fasting : '';
+}
+async function saveToday(what){
+  if(todaySaving) return;
+  todaySaving = true;
+  const msg = fx('todayMsg'); msg.classList.remove('err'); msg.textContent = 'Saving…';
+  const row = todayRow(), raw = fx('todayFasting').value.trim();
+  const body = {sheetId: SHEET_ID, date: toIsoDate(new Date()),
+    xigduo: todayPending.xigduo, vitd: todayPending.vitd, stator: todayPending.stator,
+    ozempic: row && row.ozempic != null ? row.ozempic : null,
+    fasting: raw === '' ? (row && row.fasting != null ? row.fasting : null) : +raw};
+  try{
+    const res = await fetch(ENTRY_URL, {method: 'POST', cache: 'no-store',
+      headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '')},
+      body: JSON.stringify(body)});
+    if(res.status === 401) throw new Error('Session expired — sign out and sign in again.');
+    if(!res.ok){ let e = ''; try{ e = (await res.json()).error || ''; } catch(_){} throw new Error('Save failed (' + res.status + ')' + (e ? ': ' + e : '')); }
+    msg.textContent = what === 'fasting' ? 'Fasting sugar saved' : 'Saved';
+    fx('todayFasting').dataset.dirty = '';
+    todayPending = null;
+    refresh();
+  } catch(err){
+    msg.classList.add('err'); msg.textContent = err.message;
+  } finally {
+    todaySaving = false;
+  }
+}
+fx('todayMeds').addEventListener('click', e => {
+  const b = e.target.closest('.med-toggle');
+  if(!b || todaySaving) return;
+  todayPending[b.dataset.med] = !todayPending[b.dataset.med];
+  renderToday();
+  saveToday('meds');
+});
+fx('todayFasting').addEventListener('input', () => { fx('todayFasting').dataset.dirty = '1'; });
+fx('todayFasting').addEventListener('keydown', e => { if(e.key === 'Enter') saveToday('fasting'); });
+fx('todaySave').addEventListener('click', () => saveToday('fasting'));
 fx('entryCancel').addEventListener('click', () => closeEntry());
 fx('fDate').addEventListener('change', fillEntryForm);
 fx('entryCard').addEventListener('submit', saveEntry);
