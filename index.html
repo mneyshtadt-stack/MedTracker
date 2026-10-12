@@ -265,6 +265,28 @@
   .f-actions button:disabled{opacity:0.5; cursor:default;}
   #entryError{color:var(--bad-text); font-size:13px; min-height:1em; margin-top:6px;}
 
+  /* Reminders */
+  #remBtn{padding:0 12px;}
+  .rem-status{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; margin-bottom:14px;
+    border-radius:12px; background:var(--soft); font-size:14px;}
+  .rem-status.on{background:var(--accent-soft);}
+  .rem-row{display:flex; align-items:center; gap:12px; min-height:60px; border-top:1px solid var(--grid);}
+  .rem-row:first-child{border-top:0;}
+  .rem-row .rem-text{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .rem-row .rem-text b{font-size:15px; font-weight:600;}
+  .rem-row .rem-text span{font-size:12px; color:var(--ink-2);}
+  .rem-row input[type=time], .rem-row select{font:500 15px var(--mono); height:44px; padding:0 8px; border-radius:10px;
+    border:1px solid var(--axis); background:var(--page); color:var(--ink);}
+  .rem-row select{font-family:'Geist', sans-serif;}
+  .rem-row.off .rem-text, .rem-row.off input[type=time], .rem-row.off select{opacity:0.45;}
+  .switch{appearance:none; -webkit-appearance:none; flex:none; width:46px; height:28px; border-radius:14px; margin:0; cursor:pointer;
+    background:var(--axis); position:relative; transition:background .15s;}
+  .switch::after{content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px; background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:transform .15s;}
+  .switch:checked{background:var(--series-1);}
+  .switch:checked::after{transform:translateX(18px);}
+  .switch:focus-visible{outline:2px solid var(--series-1); outline-offset:2px;}
+
   /* Phone: bottom navigation, dialogs as bottom sheets */
   #bottomNav{display:none;}
   @media (max-width:700px){
@@ -513,6 +535,7 @@
     </div>
     <div class="hdr-right">
       <div class="hdr-actions">
+        <button id="remBtn" type="button" class="btn" aria-label="Reminders" title="Reminders"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 6 2.5 7h-17C4.5 16 6 14 6 10zM10 20a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button id="refreshBtn" type="button" class="btn">Refresh</button>
         <button id="addBtn" type="button" class="btn primary hide-sm">+ Add entry</button>
       </div>
@@ -599,6 +622,24 @@
   <a href="#labsSection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M8 3h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Labs</a>
 </nav>
 
+<div id="remModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="remTitle">
+  <div class="modal-card">
+    <h3 id="remTitle">Reminders</h3>
+    <div class="modal-hint">Notifications on your phone at fixed times, whether or not the app is open.</div>
+    <div class="rem-status">
+      <span id="remState">Checking…</span>
+      <button type="button" id="remEnable" class="btn primary" style="display:none">Turn on for this phone</button>
+      <button type="button" id="remTest" class="btn" style="display:none">Send test</button>
+    </div>
+    <div id="remRows"></div>
+    <div id="remError" class="modal-error"></div>
+    <div class="f-actions">
+      <button type="button" id="remCancel">Close</button>
+      <button type="button" class="primary" id="remSave">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="labModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="labTitle">
   <form id="labCard" class="modal-card" autocomplete="off">
     <h3 id="labTitle">Add lab report</h3>
@@ -650,7 +691,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1791702038";
+const BUILD_ID = "1791835119";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1466,6 +1507,114 @@ async function saveEntry(ev){
 }
 fx('addBtn').addEventListener('click', openEntry);
 fx('navAdd').addEventListener('click', openEntry);
+
+// ---------- reminders ----------
+// Push notifications at fixed times, sent by the proxy (medtracker-reminders.js) to every phone that
+// turned them on here. Purely time-based: they don't look at the sheet. sw.js shows them.
+const REM_LABELS = {
+  morning: ['Xigduo + Vit D', 'Every day'],
+  evening: ['Stator', 'Every day'],
+  ozempic: ['Ozempic', 'Weekly injection'],
+  fasting: ['Fasting sugar', 'Weekly measurement'],
+};
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+let remConfig = null;
+function b64ToBytes(b64){
+  const s = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+// The service worker that shows the notifications (sw.js); registered here if the page hasn't yet,
+// and never waited on for more than a few seconds.
+async function pushRegistration(){
+  if(!pushSupported) throw new Error('This browser can\'t show reminders.');
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js'));
+  return Promise.race([navigator.serviceWorker.ready.then(() => reg),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('The app\'s background service isn\'t ready. Reload and try again.')), 8000))]);
+}
+async function currentSubscription(){
+  if(!pushSupported) return null;
+  return (await pushRegistration()).pushManager.getSubscription();
+}
+async function showRemState(){
+  const sub = await currentSubscription().catch(() => null);
+  const on = !!sub && Notification.permission === 'granted';
+  fx('remState').textContent = !pushSupported ? 'This browser can\'t show reminders. Use the installed app on your phone.'
+    : Notification.permission === 'denied' ? 'Notifications are blocked for MedTracker. Allow them in the phone\'s app settings.'
+    : on ? '✓ Reminders are on for this device' : 'Reminders are off on this device';
+  fx('remState').parentElement.classList.toggle('on', on);
+  fx('remEnable').style.display = pushSupported && !on && Notification.permission !== 'denied' ? '' : 'none';
+  fx('remTest').style.display = on ? '' : 'none';
+}
+function renderRemRows(){
+  fx('remRows').innerHTML = remConfig.settings.items.map(it => {
+    const [title, sub] = REM_LABELS[it.id] || [it.id, ''];
+    const day = it.day == null ? '' : `<select data-day aria-label="${esc(title)} day">${DAYS.map((d, i) => `<option value="${i}"${i === it.day ? ' selected' : ''}>${d.slice(0, 3)}</option>`).join('')}</select>`;
+    return `<div class="rem-row${it.enabled ? '' : ' off'}" data-id="${esc(it.id)}">` +
+      `<input type="checkbox" class="switch" data-on aria-label="${esc(title)} reminder"${it.enabled ? ' checked' : ''}>` +
+      `<span class="rem-text"><b>${esc(title)}</b><span>${esc(sub)}</span></span>${day}` +
+      `<input type="time" data-time value="${esc(it.time)}" aria-label="${esc(title)} time"></div>`;
+  }).join('');
+}
+async function openReminders(){
+  fx('remError').textContent = '';
+  fx('remRows').innerHTML = '<div class="empty-note">Loading…</div>';
+  fx('remModal').classList.add('open');
+  showRemState();
+  try{
+    remConfig = await labPost('/medtracker/reminders/config', {sheetId: SHEET_ID});
+    renderRemRows();
+  } catch(err){
+    fx('remRows').innerHTML = '';
+    fx('remError').textContent = err.status === 400 || err.status === 404 ? 'Reminders aren\'t set up on the proxy yet.' : err.message;
+  }
+}
+fx('remBtn').addEventListener('click', openReminders);
+fx('remCancel').addEventListener('click', () => fx('remModal').classList.remove('open'));
+fx('remModal').addEventListener('click', e => { if(e.target === fx('remModal')) fx('remModal').classList.remove('open'); });
+fx('remRows').addEventListener('change', e => {
+  if(e.target.matches('[data-on]')) e.target.closest('.rem-row').classList.toggle('off', !e.target.checked);
+});
+fx('remEnable').addEventListener('click', async () => {
+  fx('remError').textContent = '';
+  try{
+    if(!remConfig) throw new Error('Reminders aren\'t set up on the proxy yet.');
+    if(await Notification.requestPermission() !== 'granted') { showRemState(); return; }
+    const reg = await pushRegistration();
+    const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(remConfig.publicKey)});
+    await labPost('/medtracker/reminders/subscribe', {sheetId: SHEET_ID, subscription: sub.toJSON(),
+      deviceLabel: /android/i.test(navigator.userAgent) ? 'Android phone' : /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone' : 'Computer'});
+    await showRemState();
+    await labPost('/medtracker/reminders/test', {sheetId: SHEET_ID, endpoint: sub.endpoint});
+  } catch(err){ fx('remError').textContent = 'Could not turn on reminders: ' + err.message; }
+});
+fx('remTest').addEventListener('click', async () => {
+  fx('remError').textContent = '';
+  try{
+    const sub = await currentSubscription();
+    const r = await labPost('/medtracker/reminders/test', {sheetId: SHEET_ID, endpoint: sub ? sub.endpoint : undefined});
+    fx('remError').textContent = r.sent ? '' : 'No device received it. Turn reminders off and on again.';
+  } catch(err){ fx('remError').textContent = err.message; }
+});
+fx('remSave').addEventListener('click', async () => {
+  if(!remConfig) return;
+  fx('remError').textContent = '';
+  const items = [...fx('remRows').querySelectorAll('.rem-row')].map(row => {
+    const it = {id: row.dataset.id, enabled: row.querySelector('[data-on]').checked, time: row.querySelector('[data-time]').value};
+    const day = row.querySelector('[data-day]');
+    if(day) it.day = +day.value;
+    return it;
+  });
+  if(items.some(i => !/^\d{2}:\d{2}$/.test(i.time))){ fx('remError').textContent = 'Set a time for every reminder.'; return; }
+  const btn = fx('remSave'); btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    remConfig = Object.assign(remConfig, await labPost('/medtracker/reminders/save', {sheetId: SHEET_ID,
+      settings: {tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jerusalem', items}}));
+    fx('remModal').classList.remove('open');
+    setStatus('Reminders saved');
+  } catch(err){ fx('remError').textContent = 'Could not save: ' + err.message; }
+  finally{ btn.disabled = false; btn.textContent = 'Save'; }
+});
 
 // ---------- Today card ----------
 // Quick check-in for today's row: tapping a medicine saves it at once; fasting sugar saves with its
