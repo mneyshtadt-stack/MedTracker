@@ -3,6 +3,11 @@
 // criteria; the push listeners show MedTracker's reminders (sent by the proxy at the set times).
 self.addEventListener('fetch', () => {});
 
+// Take over as soon as a new version is installed, instead of waiting until every MedTracker window
+// has been closed -- otherwise an old copy without the push handler can keep swallowing reminders.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
