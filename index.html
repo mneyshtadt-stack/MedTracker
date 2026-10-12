@@ -691,7 +691,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1791835119";
+const BUILD_ID = "1791835505";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1589,12 +1589,15 @@ fx('remEnable').addEventListener('click', async () => {
   } catch(err){ fx('remError').textContent = 'Could not turn on reminders: ' + err.message; }
 });
 fx('remTest').addEventListener('click', async () => {
-  fx('remError').textContent = '';
+  const out = fx('remError');
+  out.style.color = ''; out.textContent = 'Sending…';
   try{
     const sub = await currentSubscription();
-    const r = await labPost('/medtracker/reminders/test', {sheetId: SHEET_ID, endpoint: sub ? sub.endpoint : undefined});
-    fx('remError').textContent = r.sent ? '' : 'No device received it. Turn reminders off and on again.';
-  } catch(err){ fx('remError').textContent = err.message; }
+    if(!sub) throw new Error('This phone isn\'t subscribed any more. Tap "Turn on for this phone" again.');
+    const r = await labPost('/medtracker/reminders/test', {sheetId: SHEET_ID, endpoint: sub.endpoint});
+    if(r.sent){ out.style.color = 'var(--good-text)'; out.textContent = '✓ Sent by the server. It should appear within a few seconds.'; }
+    else out.textContent = 'The server couldn\'t deliver it to this phone. Turn reminders on again.';
+  } catch(err){ out.textContent = err.message; }
 });
 fx('remSave').addEventListener('click', async () => {
   if(!remConfig) return;
