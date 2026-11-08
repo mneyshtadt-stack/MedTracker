@@ -112,14 +112,14 @@
   .sugar-latest .big{display:flex; align-items:baseline; gap:12px;}
   .sugar-latest .big b{font:700 76px/1 var(--mono); letter-spacing:-0.03em;}
   .sugar-latest .big .up, .sugar-latest .big .down{font-size:17px;}
-  .scale{position:relative; height:104px;}
+  .scale{position:relative; height:140px;}
   .scale-track{position:absolute; left:0; right:0; top:48px; height:8px; border-radius:4px; background:var(--soft);}
   .scale-band{position:absolute; top:48px; height:8px; border-radius:4px; background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent-line);}
   .scale-tick{position:absolute; top:42px; width:4px; height:20px; border-radius:2px; background:var(--ink-2); transform:translateX(-50%);}
   .scale-dot{position:absolute; top:38px; width:28px; height:28px; border-radius:999px; border:4px solid var(--surface); box-sizing:border-box; transform:translateX(-50%);}
   .scale-lbl{position:absolute; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:1px; white-space:nowrap; font-size:12px; color:var(--ink-2);}
   .scale-lbl b{font:600 16px var(--mono); color:var(--ink);}
-  .scale-lbl.above{top:0;} .scale-lbl.below{top:68px;} .scale-lbl.below2{top:68px; flex-direction:column-reverse;}
+  .scale-lbl.above{top:0;} .scale-lbl.below{top:68px;} .scale-lbl.below2{top:104px;}
   .scale-axis{display:flex; justify-content:space-between; font:12px var(--mono); color:var(--muted); margin-top:2px;}
   .dash-row{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;}
   .dash-row .dash-head{margin-bottom:12px;}
@@ -688,7 +688,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1794123011";
+const BUILD_ID = "1794155572";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -925,7 +925,7 @@ function sugarPanel(last, prev, m4, mBefore, last4, withF, m3m, a3m, delta){
   const pL = at(last.fasting), p4 = m4 != null ? at(m4) : null, p3 = m3m != null ? at(m3m) : null;
   const near = (a, b) => a != null && b != null && Math.abs(a - b) < 11;
   const pos3 = near(p3, pL) ? (near(p3, p4) ? 'below2' : 'below') : 'above';
-  const lbl = (p, cls, name, v, ink) => p == null ? '' : `<div class="scale-lbl ${cls}" style="left:${p.toFixed(1)}%${cls === 'below2' ? '; top:84px' : ''}">${cls === 'above' ? `<span${ink ? ` style="color:${ink}"` : ''}>${name}</span><b${ink ? ` style="color:${ink}"` : ''}>${fmtNum(v, 0)}</b>` : `<b>${fmtNum(v, 0)}</b><span>${name}</span>`}</div>`;
+  const lbl = (p, cls, name, v, ink) => p == null ? '' : `<div class="scale-lbl ${cls}" style="left:${p.toFixed(1)}%">${cls === 'above' ? `<span${ink ? ` style="color:${ink}"` : ''}>${name}</span><b${ink ? ` style="color:${ink}"` : ''}>${fmtNum(v, 0)}</b>` : `<b>${fmtNum(v, 0)}</b><span>${name}</span>`}</div>`;
   return `<section class="dash-panel" aria-labelledby="sugarTitle">
     <div class="dash-head"><h2 id="sugarTitle">Fasting sugar</h2><span>mg/dL · where the latest sits against your averages</span></div>
     <div class="sugar">
