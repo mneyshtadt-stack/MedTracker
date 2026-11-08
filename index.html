@@ -286,10 +286,11 @@
   .rem-row .rem-text{flex:1; min-width:0; display:flex; flex-direction:column;}
   .rem-row .rem-text b{font-size:15px; font-weight:600;}
   .rem-row .rem-text span{font-size:12px; color:var(--ink-2);}
-  .rem-row input[type=time], .rem-row select{font:500 15px var(--mono); height:44px; padding:0 8px; border-radius:10px;
+  .rem-row input[data-time], .rem-row select{font:500 15px var(--mono); height:44px; padding:0 8px; border-radius:10px;
     border:1px solid var(--axis); background:var(--page); color:var(--ink);}
   .rem-row select{font-family:'Geist', sans-serif;}
-  .rem-row.off .rem-text, .rem-row.off input[type=time], .rem-row.off select{opacity:0.45;}
+  .rem-row input[data-time]{width:104px; text-align:center;}
+  .rem-row.off .rem-text, .rem-row.off input[data-time], .rem-row.off select{opacity:0.45;}
   .switch{appearance:none; -webkit-appearance:none; flex:none; width:46px; height:28px; border-radius:14px; margin:0; cursor:pointer;
     background:var(--axis); position:relative; transition:background .15s;}
   .switch::after{content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px; background:#fff;
@@ -687,7 +688,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1791837035";
+const BUILD_ID = "1794123011";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1614,7 +1615,7 @@ function renderRemRows(){
     return `<div class="rem-row${it.enabled ? '' : ' off'}" data-id="${esc(it.id)}">` +
       `<input type="checkbox" class="switch" data-on aria-label="${esc(title)} reminder"${it.enabled ? ' checked' : ''}>` +
       `<span class="rem-text"><b>${esc(title)}</b><span>${esc(sub)}</span></span>${day}` +
-      `<input type="time" data-time value="${esc(it.time)}" aria-label="${esc(title)} time"></div>`;
+      `<input type="text" data-time inputmode="numeric" maxlength="5" placeholder="HH:MM" value="${esc(it.time)}" aria-label="${esc(title)} time (24-hour)"></div>`;
   }).join('');
 }
 async function openReminders(){
@@ -1669,7 +1670,8 @@ fx('remSave').addEventListener('click', async () => {
     if(day) it.day = +day.value;
     return it;
   });
-  if(items.some(i => !/^\d{2}:\d{2}$/.test(i.time))){ fx('remError').textContent = 'Set a time for every reminder.'; return; }
+  const hhmm = t => { const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(t).trim()); return m ? m[1].padStart(2, '0') + ':' + m[2] : null; };
+  for(const i of items){ i.time = hhmm(i.time); if(!i.time){ fx('remError').textContent = 'Use 24-hour times, like 07:20 or 21:00.'; return; } }
   const btn = fx('remSave'); btn.disabled = true; btn.textContent = 'Saving…';
   try{
     remConfig = Object.assign(remConfig, await labPost('/medtracker/reminders/save', {sheetId: SHEET_ID,
