@@ -261,7 +261,7 @@
   #entryHint{font-size:13px; color:var(--ink-2); margin-bottom:14px; min-height:1em;}
   .f-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;}
   .f-row label{font-size:14px; font-weight:500;}
-  .f-row input[type=date], .f-row input[type=number]{font:500 16px var(--mono); width:170px; height:44px; padding:0 12px; border-radius:10px;
+  .f-row input[type=text], .f-row input[type=number]{font:500 16px var(--mono); width:170px; height:44px; padding:0 12px; border-radius:10px;
     border:1px solid var(--axis); background:var(--page); color:var(--ink);}
   .f-row input[type=checkbox]{width:22px; height:22px; accent-color:var(--series-1);}
   .f-checks{display:flex; gap:8px; margin:4px 0 14px; flex-wrap:wrap;}
@@ -319,7 +319,7 @@
       display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 6px 16px rgba(11,110,95,0.3);}
     #entryModal, .modal{align-items:flex-end; padding:0;}
     #entryCard, .modal-card{max-width:none; border-radius:24px 24px 0 0; padding:20px 18px calc(24px + env(safe-area-inset-bottom)); border-width:1px 0 0;}
-    .f-row input[type=date], .f-row input[type=number]{width:60%;}
+    .f-row input[type=text], .f-row input[type=number]{width:60%;}
   }
   @media (hover:hover){
     .btn:hover, .ghost-btn:hover, .med-toggle:hover{border-color:var(--ink-2);}
@@ -643,7 +643,7 @@
     <div id="labStep1">
       <div class="modal-hint">Saved as <b id="labName">YYMMDD.pdf</b> in <span id="labWhere">your "Laboratory test results" folder</span>.</div>
       <div class="f-row"><label for="labFile">Report (PDF)</label><input type="file" id="labFile" accept="application/pdf,.pdf"></div>
-      <div class="f-row"><label for="labDate">Test date</label><input type="date" id="labDate"></div>
+      <div class="f-row"><label for="labDate">Test date</label><input type="text" id="labDate" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10"></div>
       <div id="labFolderRow" class="modal-hint" style="display:none">Folder: <b id="labFolderName"></b> · <a href="#" id="labFolderChange">Change</a></div>
     </div>
     <div id="labStep2" style="display:none">
@@ -669,7 +669,7 @@
   <form id="entryCard" autocomplete="off">
     <h3 id="entryTitle">Add entry</h3>
     <div id="entryHint"></div>
-    <div class="f-row"><label for="fDate">Date</label><input type="date" id="fDate" required></div>
+    <div class="f-row"><label for="fDate">Date</label><input type="text" id="fDate" required inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10"></div>
     <div class="f-checks">
       <label><input type="checkbox" id="fXigduo"> Xigduo</label>
       <label><input type="checkbox" id="fVitd"> Vit D</label>
@@ -688,7 +688,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1795153723";
+const BUILD_ID = "1795233603";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1500,9 +1500,12 @@ const entryModal = document.getElementById('entryModal');
 const fx = id => document.getElementById(id);
 function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function numOrEmpty(v){ return v == null ? '' : String(v); }
+// Date boxes show and accept dd/mm/yyyy (a native date picker would follow the phone's locale instead).
+function dateIso(id){ const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fx(id).value.trim()); if(!m) return ''; const iso = `${m[3]}-${m[2]}-${m[1]}`; const d = new Date(iso + 'T00:00'); return d.getDate() == +m[1] && d.getMonth() + 1 == +m[2] ? iso : ''; }
+function setDate(id, iso){ fx(id).value = iso ? `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : ''; }
 
 function fillEntryForm(){
-  const iso = fx('fDate').value;
+  const iso = dateIso('fDate');
   const existing = state.rows.find(r => toIsoDate(r.date) === iso);
   fx('entryHint').textContent = existing
     ? 'This date already has a row. Saving updates it.'
@@ -1514,7 +1517,7 @@ function fillEntryForm(){
   fx('fFasting').value = numOrEmpty(existing && existing.fasting);
 }
 function openEntry(){
-  fx('fDate').value = toIsoDate(new Date());
+  setDate('fDate', toIsoDate(new Date()));
   fx('entryError').textContent = '';
   fillEntryForm();
   entryModal.classList.add('open');
@@ -1533,11 +1536,11 @@ async function saveEntry(ev){
   const num = id => { const v = fx(id).value.trim(); return v === '' ? null : +v; };
   const body = {
     sheetId: SHEET_ID,
-    date: fx('fDate').value,
+    date: dateIso('fDate'),
     xigduo: fx('fXigduo').checked, vitd: fx('fVitd').checked, stator: fx('fStator').checked,
     ozempic: num('fOzempic'), fasting: num('fFasting'),
   };
-  if(!body.date){ fx('entryError').textContent = 'Pick a date.'; return; }
+  if(!body.date){ fx('entryError').textContent = 'Enter the date as dd/mm/yyyy.'; return; }
   const btn = fx('entrySave');
   btn.disabled = true; btn.textContent = 'Saving…';
   fx('entryError').textContent = '';
@@ -1726,7 +1729,7 @@ async function pickLabFolder(){
   return h;
 }
 function labTabName(){
-  const d = fx('labDate').value;   // yyyy-mm-dd
+  const d = dateIso('labDate');   // yyyy-mm-dd
   return d ? d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10) : 'YYMMDD';
 }
 async function showLabFolder(){
@@ -1759,7 +1762,7 @@ fx('labFile').addEventListener('change', () => {
   const f = fx('labFile').files[0];
   // A file already named like 260903.pdf pre-fills the date; otherwise you enter it.
   const m = f && /^(\d{2})(\d{2})(\d{2})/.exec(f.name);
-  if(m) fx('labDate').value = `20${m[1]}-${m[2]}-${m[3]}`;
+  if(m) setDate('labDate', `20${m[1]}-${m[2]}-${m[3]}`);
   fx('labName').textContent = labTabName() + '.pdf';
 });
 fx('labDate').addEventListener('input', () => { fx('labName').textContent = labTabName() + '.pdf'; });
@@ -1797,7 +1800,7 @@ async function folderWithPermission(interactive){
 fx('labCard').addEventListener('submit', async e => {
   e.preventDefault();
   fx('labError').textContent = '';
-  const file = fx('labFile').files[0], date = fx('labDate').value, tab = labTabName(), name = tab + '.pdf';
+  const file = fx('labFile').files[0], date = dateIso('labDate'), tab = labTabName(), name = tab + '.pdf';
   if(!file || !date){ fx('labError').textContent = 'Choose the PDF and its test date.'; return; }
   try{
     let where;
