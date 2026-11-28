@@ -688,7 +688,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1795233603";
+const BUILD_ID = "1795840641";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1639,6 +1639,12 @@ fx('remCancel').addEventListener('click', () => fx('remModal').classList.remove(
 fx('remModal').addEventListener('click', e => { if(e.target === fx('remModal')) fx('remModal').classList.remove('open'); });
 fx('remRows').addEventListener('change', e => {
   if(e.target.matches('[data-on]')) e.target.closest('.rem-row').classList.toggle('off', !e.target.checked);
+});
+// Phone number keypads have no ":", so the colon is added from the digits: 720 -> 7:20, 0720 -> 07:20.
+fx('remRows').addEventListener('input', e => {
+  if(!e.target.matches('[data-time]')) return;
+  const d = e.target.value.replace(/\D/g, '').slice(0, 4);
+  e.target.value = d.length === 3 ? d[0] + ':' + d.slice(1) : d.length === 4 ? d.slice(0, 2) + ':' + d.slice(2) : d;
 });
 fx('remEnable').addEventListener('click', async () => {
   fx('remError').textContent = '';
