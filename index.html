@@ -688,7 +688,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const BUILD_ID = "1795840641";
+const BUILD_ID = "1795857968";
 const SHEET_ID = "15tQF2ZVb1jxMr_FAgMA4_Id8-zP5SJJWeOCNoOztJ_M";
 const PROXY_BASE_URL = "https://api.sheetpulse.org";
 const SNAPSHOT_KEY = 'mt_snapshot';
@@ -1564,11 +1564,23 @@ async function saveEntry(ev){
     closeEntry();
     setStatus('Saved ' + fmtDM(new Date(body.date + 'T00:00')));
     refresh();
+    reportTaken(body);
   } catch(e){
     fx('entryError').textContent = 'Could not reach the server: ' + e.message;
   } finally {
     btn.disabled = false; btn.textContent = 'Save';
   }
+}
+// Tells the reminder module which medicines are ticked for a day, so it skips those reminders.
+// Best effort: a failure only means a reminder may still go out.
+async function reportTaken(body){
+  try{
+    await fetch(PROXY_BASE_URL + '/medtracker/reminders/taken', {
+      method: 'POST', cache: 'no-store',
+      headers: {'Content-Type':'application/json', Authorization: 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '')},
+      body: JSON.stringify({sheetId: SHEET_ID, date: body.date, xigduo: body.xigduo, vitd: body.vitd, stator: body.stator}),
+    });
+  } catch(e){}
 }
 fx('addBtn').addEventListener('click', openEntry);
 fx('navAdd').addEventListener('click', openEntry);
